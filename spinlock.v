@@ -30,10 +30,10 @@ Holding a lock for a long time may cause
 other CPUs to waste time spinning to acquire it.
 */
 pub fn (mut *lk Spinlock) acquire() void {
-	pushcli()
+	push_cli()
 
 	if holding(lk) {
-		error("acquire")
+		die('acquire')
 	}
 
 	// The xchg is atomic
@@ -54,7 +54,7 @@ pub fn (mut *lk Spinlock) acquire() void {
 // Release the lock.
 pub fn (mut *lk Spinlock) release() void {
 	if !holding(lk) {
-		error("release")
+		die('release')
 	}
 
 	lk.pcs[0] = 0
@@ -74,8 +74,8 @@ pub fn (mut *lk Spinlock) release() void {
 	This code can't use a C assignment, since it might
 	not be atomic. A real OS would use C atomics here.
 	*/
-	volatile("movl $0, %0" : "+m" (lk.locked) : )
-	popcli()
+	volatile('movl $0, %0' : '+m' (lk.locked) : )
+	pop_cli()
 }
 
 pub fn get_caller_pcs(*v any, pcs []u32) void {
@@ -99,12 +99,12 @@ pub fn get_caller_pcs(*v any, pcs []u32) void {
 }
 
 /*
-Pushcli/popcli are like cli/sti except that they are matched:
-it takes two popcli to undo two pushcli.  Also, if interrupts
-are off, then pushcli, popcli leaves them off.
+push_cli/pop_cli are like cli/sti except that they are matched:
+it takes two pop_cli to undo two push_cli.  Also, if interrupts
+are off, then push_cli, pop_cli leaves them off.
 */
 
-pub fn pushcli() void {
+pub fn push_cli() void {
 	eflags := readeflags()
 	cli()
 
@@ -115,13 +115,13 @@ pub fn pushcli() void {
 	my_cpu().ncli++
 }
 
-pub fn popcli() {
+pub fn pop_cli() {
 	if readeflags() & FL_IF {
-		error("popcli -- interuptable")
+		die('pop_cli -- interuptable')
 	}
 
 	if --my_cpu().ncli < 0 {
-		error("popcli")
+		die('pop_cli')
 	}
 
 	if my_cpu.ncli == 0 && my_cpu().intena {
