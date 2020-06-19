@@ -1,4 +1,4 @@
-module vnix
+module param
 
 pub const (
 	NPROC = 64, // maximum number of processes
@@ -15,3 +15,5 @@ pub const (
 	NBUF = MAXOPBLOCKS * 3, // size of disk block cache
 	FSSIZE = 1000, // size of file system in blocks
 )
+
+pub fn nelem(x any) { return sizeof(x) / sizeof(x[0]) }
