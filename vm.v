@@ -30,7 +30,7 @@ pub fn seginit() void
 	c.gdt[SEG_KCODE] = seg(STA_X | STA_R, 0, 0xffffffff, 0)
 	c.gdt[SEG_KDATA] = seg(STA_W, 0, 0xffffffff, 0)
 	c.gdt[SEG_UCODE] = seg(STA_X | STA_R, 0, 0xffffffff, DPL_USER)
-	c.gdt[SEGUDATA] = seg(STA_W, 0, 0xffffffff, DPL_USR)
+	c.gdt[SEGUDATA] = seg(STA_W, 0, 0xffffffff, DPL_USER)
 	lgdt(c.gdt, sizeof(c.gdt))
 }
 
@@ -193,7 +193,7 @@ pub fn (*p Proc) switch_uvm() void
 
 	my_cpu().gdt[SEG_TSS].s = 0
 	my_cpu().ts.ss0 = SEG_KDATA << 3
-	my_cpu().ts.esp0 = u32(p.kstack + KSTACKSIZE)
+	my_cpu().ts.esp0 = u32(p.kstack + param.KSTACKSIZE)
 	// setting IOPL=0 in eflags *and* iomb beyond the tss segment limit
  	// forbids I/O instructions (e.g., inb and outb) from user space
 	my_cpu().ts.iomb = byte(0xFFFF)
