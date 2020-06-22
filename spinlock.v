@@ -105,7 +105,7 @@ are off, then push_cli, pop_cli leaves them off.
 */
 
 pub fn push_cli() void {
-	eflags := readeflags()
+	eflags := read_eflags()
 	cli()
 
 	if (my_cpu().ncli == 0) {
@@ -116,7 +116,7 @@ pub fn push_cli() void {
 }
 
 pub fn pop_cli() {
-	if readeflags() & FL_IF {
+	if read_eflags() & FL_IF {
 		die('pop_cli -- interuptable')
 	}
 
