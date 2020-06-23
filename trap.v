@@ -8,6 +8,7 @@ import mmu
 import proc
 import x86
 import spinlock
+import syscall
 
 // x86 trap and interrupt constants.
 
@@ -64,7 +65,7 @@ pub fn tv_init() void
 
 	SETGATE(idt[T_SYSCALL], 1, SEG_KCODE << 3, vectors[T_SYSCALL], DPL_USER)
 
-	init_lock(&ticks_lock, 'time')
+	spinlock.init_lock(&ticks_lock, 'time')
 }
 
 pub fn idt_init() void
@@ -75,12 +76,12 @@ pub fn idt_init() void
 pub fn trap(*tf TrapFrame) void
 {
 	if tf.trap_no == T_SYSCALL {
-		if my_proc().killed {
+		if proc.my_proc().killed {
 			exit()
 		}
 
 		my_proc.tf = tf
-		syscall()
+		syscall.sys_call()
 
 		if my_proc().killed {
 			exit()
@@ -92,10 +93,10 @@ pub fn trap(*tf TrapFrame) void
 	match tf.trap_no {
 		T_IRQ0 + IRQ_TIMER {
 			if cpu_id() == 0 {
-				acquire(&ticks_lock)
+				spinlock.acquire(&ticks_lock)
 				ticks++
 				wake_up(&ticks)
-				release(&ticks_lock)
+				spinlock.release(&ticks_lock)
 			}
 
 			lapiceoi()
@@ -126,7 +127,7 @@ pub fn trap(*tf TrapFrame) void
 		}
 
 		else {
-			if my_proc() == 0 || (tf.cs & 3) == 0 {
+			if proc.my_proc() == 0 || (tf.cs & 3) == 0 {
 				// In kernel, it must be our mistake.
 				println('unexpected trap ${tf.trap_no} from cpu ${cpu_id()} eip ${tf.eip} (cr2=0x${rcr2()})')
 				die('trap')
@@ -141,18 +142,18 @@ pub fn trap(*tf TrapFrame) void
 	// Force process exit if it has been killed and is in user space.
 	// (If it is still executing in the kernel, let it keep running
 	// until it gets to the regular system call return.)
-	if my_proc() && my_proc().killed && (tf.cs & 3) == DPL_USER {
+	if proc.my_proc() && proc.my_proc().killed && (tf.cs & 3) == DPL_USER {
 		exit()
 	}
 
 	// Force process to give up CPU on clock tick.
 	// If interrupts were on while locks held, would need to check nlock.
-	if my_proc() && my_proc().state == RUNNING && tf.trap_no == T_IRQ0 + IRQ_TIMER {
+	if proc.my_proc() && proc.my_proc().state == RUNNING && tf.trap_no == T_IRQ0 + IRQ_TIMER {
 		yield()
 	}
 
 	// Check if the process has been killed since we yielded.
-	if my_proc() && my_proc().killed && (tf.cs & 3) == DPL_USER {
+	if proc.my_proc() &&  proc.my_proc().killed && (tf.cs & 3) == DPL_USER {
 		exit()
 	}
 }

@@ -16,7 +16,7 @@ const (
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
-pub fn seginit() void
+pub fn seg_init() void
 {
 	*c := CPU{}
 
@@ -39,7 +39,7 @@ Return the address of the PTE in page table pgdir
 that corresponds to virtual address va.  If alloc!=0,
 create any required page table pages.
 */
-pub fn (*pgdir pde_t, *va any, alloc int) pde_t *
+pub fn walk_pgdir(*pgdir pde_t, *va any, alloc int) pde_t *
 {
 	mut *pde := pde_t(0)
 	mut *pgtab := pte_t(0)
