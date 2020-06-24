@@ -7,6 +7,7 @@ import spinlock
 import sleeplock
 import fs
 import buf
+import bio
 
 /*
 Simple logging that allows concurrent FS system calls.
@@ -41,13 +42,13 @@ pub struct LogHeader {
 }
 
 pub struct Log {
-	lock spinlock.Spinlock{}
+	lock spinlock.Spinlock
 	start int
 	size int
 	outstanding int // how many FS sys calls are executing.
 	committing int // in commit(), please wait.
 	dev int
-	lh LongHeader{}
+	lh LongHeader
 }
 
 global (
@@ -79,9 +80,9 @@ pub fn install_trans() void
 		mut *dbuf := bio.b_read(log.dev, log.ln.block[tail]) // read dst
 
 		memmove(dbuf.data, lbuf.data, fs.B_SIZE) // copy block to dst
-		b_write(dbuf) // write dst to disk
-		b_relse(lbuf)
-		b_relse(dbuf)
+		bio.b_write(dbuf) // write dst to disk
+		bio.b_relse(lbuf)
+		bio.b_relse(dbuf)
 	}
 }
 
@@ -106,7 +107,7 @@ pub fn read_head() void
 // current transaction commits.
 pub fn write_head() void
 {
-	mut *buf := buf.b_read(log.dev, log.start)
+	mut *buf := bio.b_read(log.dev, log.start)
 	mut *hb := LogHeader(buf.data)
 	mut i := 0
 
@@ -116,8 +117,8 @@ pub fn write_head() void
 		hb.block[i] = log.lh.block[i]
 	}
 
-	buf.b_write(buf)
-	buf.b_relse(buf)
+	bio.b_write(buf)
+	bio.b_relse(buf)
 }
 
 pub fn recover_from_log() void
@@ -136,12 +137,12 @@ pub fn begin_op() void
 	for {
 		if log.committing {
 			sleep(&log, &log.lock)
-		} else if log.lh.n + (log.outstanding + 1) * param.MAXOPBLOCKS > param.LOG_SIZE {
+		} else if log.lh.n + (log.outstanding + 1) * param.MAXOPBLOCKS > param.LOGSIZE {
 			// this op might exhaust log space; wait for commit.
 			sleep(&log, &log.lock)
 		} else {
 			log.outstanding++
-			release(&log.lock)
+			spinlock.release(&log.lock)
 			break
 		}
 	}
@@ -187,13 +188,13 @@ pub fn write_log() void
 	mut tail := 0
 
 	for tail = 0; tail < log.lh.n; tail++ {
-		mut *to := buf.b_read(log.dev, log.start + tail + 1) // log block
-		mut *from := buf.b_read(log.dev, log.lh.block[tail]) // cache block
+		mut *to := bio.b_read(log.dev, log.start + tail + 1) // log block
+		mut *from := bio.b_read(log.dev, log.lh.block[tail]) // cache block
 
 		memmove(to.data, from.data, fs.B_SIZE)
-		buf.b_write(to) // write the log
-		buf.b_relse(from)
-		buf.b_relse(to)
+		bio.b_write(to) // write the log
+		bio.b_relse(from)
+		bio.b_relse(to)
 	}
 }
 

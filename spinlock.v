@@ -37,7 +37,7 @@ pub fn (mut *lk Spinlock) acquire() void {
 	}
 
 	// The xchg is atomic
-	for xchg(&lk.locked = 1) != 0 {}
+	for x86.xchg(&lk.locked = 1) != 0 {}
 
 	/*
 	Tell the V compiler and the processor to not move loads or stores

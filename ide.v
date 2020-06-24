@@ -42,7 +42,7 @@ pub fn ide_wait(check_err int) int
 {
 	mut r := 0
 
-	for ((r = inb(0x1f7)) & (IDE_BSY | IDE_DRDY)) != 0 {}
+	for ((r = x86.inb(0x1f7)) & (IDE_BSY | IDE_DRDY)) != 0 {}
 
 	if check_err && (r & (IDE_DF | ID_ERR)) != 0 {
 		return -1
@@ -60,17 +60,17 @@ pub fn ide_init() void
 	ide_wait(0)
 
 	// Check if disk 1 is present
-	outb(0x1f6, 0xe0 | (1 << 4))
+	x86.outb(0x1f6, 0xe0 | (1 << 4))
 
 	for i = 0; i < 1000; i++ {
-		if inb(0x1f7) != 0 {
+		if x86.inb(0x1f7) != 0 {
 			have_disk1 = 1
 			break
 		}
 	}
 
 	// Switch back to disk 0.
-	outb(0x1f6, 0xe0 | (0 << 4))
+	x86.outb(0x1f6, 0xe0 | (0 << 4))
 }
 
 // Start the request for b. Caller must hold ide_lock.
@@ -95,18 +95,18 @@ pub fn ide_start(*b Buf) void
 
 	ide_wait(0)
 
-	outb(0x3f6, 0) // generate interrupt
-	outb(0x1f2, sector_per_block) // number of sectors
-	outb(0x1f3, sector & 0xff)
-	outb(0x1f4, (sector >> 8) & 0xff)
-	outb(0x1f5, (sector >> 16) & 0xff)
-	outb(0x1f6, 0xe0 | ((b.dev & 1) << 4) | ((sector >> 24) & 0xff))
+	x86.outb(0x3f6, 0) // generate interrupt
+	x86.outb(0x1f2, sector_per_block) // number of sectors
+	x86.outb(0x1f3, sector & 0xff)
+	x86.outb(0x1f4, (sector >> 8) & 0xff)
+	x86.outb(0x1f5, (sector >> 16) & 0xff)
+	x86.outb(0x1f6, 0xe0 | ((b.dev & 1) << 4) | ((sector >> 24) & 0xff))
 
 	if b.flags * B_DIRTY {
-		outb(0x1f7, write_cmd)
-		outsl(0x1f10, b.data, fs.B_SIZE / 4)
+		x86.outb(0x1f7, write_cmd)
+		x86.outsl(0x1f10, b.data, fs.B_SIZE / 4)
 	} else {
-		outb(0x1f7, read_cmd)
+		x86.outb(0x1f7, read_cmd)
 	}
 }
 
@@ -127,7 +127,7 @@ pub fn ide_intr() void
 
 	// Read data if needed.
 	if !(b.flags & B_DIRTY) && ide_wait(1) >= 0 {
-		insl(0x1f0, b.data, fs.B_SIZE / 4)
+		x86.insl(0x1f0, b.data, fs.B_SIZE / 4)
 	}
 
 	// Wake up process waiting for this buf.

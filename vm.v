@@ -31,7 +31,7 @@ pub fn seg_init() void
 	c.gdt[SEG_KDATA] = seg(STA_W, 0, 0xffffffff, 0)
 	c.gdt[SEG_UCODE] = seg(STA_X | STA_R, 0, 0xffffffff, DPL_USER)
 	c.gdt[SEGUDATA] = seg(STA_W, 0, 0xffffffff, DPL_USER)
-	lgdt(c.gdt, sizeof(c.gdt))
+	x86.lgdt(c.gdt, sizeof(c.gdt))
 }
 
 /*
@@ -206,7 +206,7 @@ pub fn (*p Proc) switch_uvm() void
 // sz must be less than a page.
 pub fn init_uvm(*pgdir pde_t, *init byte, sz u32) void
 {
-	mut *mem = byte('')
+	mut *mem = byte(0)
 
 	if sz >= PGSIZE {
 		die('init_uvm: more than a page')
@@ -248,7 +248,7 @@ pub fn load_uvm(*pgdir pde_t, *addr byte, *ip Inode, offset, sz u32) int
 // newsz, which need not be page-aligned. Returns new size or 0 on error.
 pub fn alloc_uvm(*pgdir pde_t, oldsz, newsz u32) int
 {
-	mut *mem := byte('')
+	mut *mem := byte(0)
 	mut a := u32(0)
 
 	if newsz >= KERNBASE {
@@ -424,7 +424,7 @@ uva2ka ensures this only works for PTE_U pages.
 */
 pub fn copy_out(*pgdir pde_t, va u32, *p any, len uint)
 {
-	mut *buf, *pa0 := byte('')
+	mut *buf, *pa0 := byte(0)
 	mut n, va0 := u32(0)
 
 	buf = charptr(p)
