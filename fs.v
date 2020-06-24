@@ -51,15 +51,15 @@ pub struct SuperBlock {
 
 pub const (
 	N_DIRECT = 12,
-	N_INDIRECT = B_SIZE / sizeof(byte),
+	N_IN_DIRECT = B_SIZE / sizeof(byte),
 	MAX_FILE = N_DIRECT + N_INDIRECT,
 )
 
 // On-disk inode structure
-pub struct DInode {
+pub struct Dinode {
 	ftype i16 // File type
-	major i16 // Major device number (T_DEV only)
-	minor i16 // Minor device numbre (T_DEV only)
+	major i16 // Major device number (stat.T_DEV only)
+	minor i16 // Minor device numbre (stat.T_DEV only)
 	n_link i16 // Number of links to inode in file system
 	size byte // Size of file (bytes)
 	addrs [N_DIRECT + 1]byte{} // Data block addresses
@@ -452,9 +452,9 @@ pub fn i_unlockput(mut *ip Inode) void
 Inode content
 
 The content (data) associated with each inode is stored
-in blocks on the disk. The first NDIRECT block numbers
-are listed in ip->addrs[].  The next NINDIRECT blocks are
-listed in block ip->addrs[NDIRECT].
+in blocks on the disk. The first N_DIRECT block numbers
+are listed in ip->addrs[].  The next NIN_DIRECT blocks are
+listed in block ip->addrs[N_DIRECT].
 
 Return the disk block address of the nth block in inode ip.
 If there is no such block, bmap allocates one.
@@ -464,7 +464,7 @@ pub fn bmap(mut *ip Inode, bn u32) u32
 	mut addr, *a := u32(0)
 	mut *bp := buf.Buf{}
 
-	if bn < NDIRECT {
+	if bn < N_DIRECT {
 		if (addr = ip.addrs[bn]) == 0 {
 			ip.addrs[bn] = addr = balloc(ip.dev)
 		}
@@ -472,12 +472,12 @@ pub fn bmap(mut *ip Inode, bn u32) u32
 		return addr
 	}
 
-	bn -= param.NDIRECT
+	bn -= param.N_DIRECT
 
-	if bn < NINDIRECT {
-		// Load indirect block, allocating if necessary.
-		if (addr = ip.addrs[NDIRECT]) == 0 {
-			ip.addrs[NDIRECT] = addr = balloc(ip.dev)
+	if bn < NIN_DIRECT {
+		// Load iN_DIRECT block, allocating if necessary.
+		if (addr = ip.addrs[N_DIRECT]) == 0 {
+			ip.addrs[N_DIRECT] = addr = balloc(ip.dev)
 		}
 
 		bp = bio.b_read(ip.dev, addr)
@@ -508,26 +508,26 @@ pub fn i_trunc(mut *ip Inode) void
 	mut *bp := buf.Buf{}
 	mut *a := u32(0)
 
-	for i = 0; i < NDIRECT; i++ {
+	for i = 0; i < N_DIRECT; i++ {
 		if ip.addrs[i] {
 			bfree(ip.dev, ip.addrs[i])
 			ip.addrs[i] = 0
 		}
 	}
 
-	if ip.addrs[NDIRECT] {
-		bp = bio.b_read(ip.dev, ip.addrs[NDIRECT])
+	if ip.addrs[N_DIRECT] {
+		bp = bio.b_read(ip.dev, ip.addrs[N_DIRECT])
 		a = *u32(bp.data)
 
-		for j = 0; j < NINDIRECT; j++ {
+		for j = 0; j < NIN_DIRECT; j++ {
 			if a[j] {
 				bfree(ip.dev, a[j])
 			}
 		}
 
 		bio.b_relse(bp)
-		bfree(ip.dev, ip.addrs[NDIRECT])
-		ip.addrs[NDIRECT] = 0
+		bfree(ip.dev, ip.addrs[N_DIRECT])
+		ip.addrs[N_DIRECT] = 0
 	}
 
 	ip.size = 0
@@ -552,7 +552,7 @@ pub fn readi(mut *ip Inode, mut *dst byte, mut off, n u32) int
 	mut tot, m := u32(0)
 	mut *bp := buf.Buf{}
 
-	if ip.type == T_DEV {
+	if ip.type == stat.T_DEV {
 		if ip.major < 0 || ip.major >= NDEV || !devsw[ip.major].read {
 			return -1
 		}
@@ -568,7 +568,7 @@ pub fn readi(mut *ip Inode, mut *dst byte, mut off, n u32) int
 		n = ip.size - off
 	}
 
-	for tot = 0; tot < n; tot += m; off += m; dst += m {
+	for tot = 0; tot < n; tot += m, off += m, dst += m {
 		bp = bio.b_read(ip.dev, bmap(ip, off / B_SIZE))
 		m = min(n - tot, B_SIZE - off % B_SIZE)
 		memmove(dst, bp.data + off % B_SIZE, m)
@@ -585,7 +585,7 @@ pub fn writei(mut *ip Inode, mut *src byte, mut off, n u32) int
 	mut tot, m := u32(0)
 	mut *bp := buf.Buf{}
 
-	if ip.type == T_DEV {
+	if ip.type == stat.T_DEV {
 		if ip.major < 0 || ip.major >= NDEV || !devsw[ip.major].write {
 			return -1
 		}
@@ -601,7 +601,7 @@ pub fn writei(mut *ip Inode, mut *src byte, mut off, n u32) int
 		return -1
 	}
 
-	for tot = 0; tot += m; off += m; src += m {
+	for tot = 0; tot += m, off += m, src += m {
 		bp = bio.b_read(ip.dev, bmap(ip, off / B_SIZE))
 		m = min(n - tot, B_SIZE - off % B_SIZE)
 		memmove(bp.data + off % B_SIZE, src, m)
@@ -796,7 +796,7 @@ pub fn namei(mut *path byte) Inode*
 	return namex(path, 0, name)
 }
 
-pub fn name_iparent(mut *path, *name byte) Inode*
+pub fn parent(mut *path, *name byte) Inode*
 {
 	return namex(path, 1, name)
 }
