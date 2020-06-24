@@ -1,5 +1,29 @@
 module fs
 
+import types
+import defs
+import param
+import stat
+import mmu
+import proc
+import spinlock
+import sleeplock
+import buf
+import file
+
+/*
+File system implementation.  Five layers:
+  + Blocks: allocator for raw disk blocks.
+  + Log: crash recovery for multi-step updates.
+  + Files: inode allocator, reading, writing, metadata.
+  + Directories: inode with special contents (list of other inodes!)
+  + Names: paths like /usr/rtm/vnix/fs.v for convenient naming.
+
+This file contains the low-level file system manipulation
+routines.  The (higher-level) system call implementations
+are in sysfile.v.
+*/
+
 pub const (
 	ROOTING = 1, // root i-number
 	B_SIZE = 512 // block size
@@ -55,7 +79,15 @@ pub const B_BLOCK = fn(b, sb) { b / BPB + sb.bmap_start }
 // Directory is a file containing a sequence of dirent structures.
 pub const DIR_SIZ = 14
 
+pub const min := fn(a, b) { return a if a < b else return b }
+
 pub struct Dirent {
 	inum u16
 	name [DIR_SIZ]byte{}
 }
+
+// There should be one superblock per disk device, but we run with
+// only one device
+global (
+	sb SuperBlock{}
+)
