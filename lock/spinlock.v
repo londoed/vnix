@@ -1,12 +1,11 @@
-module spinlock
+module lock
 
-import types
-import defs
-import param
-import x86
-import memlay
-import mmu
+import asm
+import dev
+import fs
+import mem
 import proc
+import sys
 
 pub struct Spinlock {
 	pub mut locked u32 := 0// Is the lock held?

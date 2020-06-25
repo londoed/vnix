@@ -1,12 +1,11 @@
 module proc
 
-import types
-import defs
-import param
-import memlay
-import mmu
-import x86
-import spinlock
+import asm
+import dev
+import fs
+import lock
+import mem
+import sys
 
 struct PTable {
 	lock Spinlock{},
@@ -34,7 +33,7 @@ pub fn my_cpu() void
 	mut api_cid, i := 0
 
 	if readeflags() & FL_IF {
-		die('my_cpu called with interrupts enabled')
+		kpanic('my_cpu called with interrupts enabled')
 	}
 
 	api_cid = lapicid()
@@ -45,7 +44,7 @@ pub fn my_cpu() void
 		}
 	}
 
-	die('unknown api_cid\n')
+	kpanic('unknown api_cid\n')
 }
 
 // Diable interrupts so that we are not rescheduled
@@ -75,7 +74,7 @@ pub fn alloc_proc() *Proc{}
 	mut *sp := byte('')
 	mut next_pid := 0
 
-	acquire(&PTable.lock)
+	spinlock.acquire(&PTable.lock)
 
 	for p = PTable.proc; p < &PTable.proc[param.NPROC]; p++ {
 		if p.state == UNUSED {
@@ -110,7 +109,7 @@ found:
 
 	sp -= sizeof(*p.context)
 	p.context = Context(*sp)
-	memset(p.context, 0, sizeof(*p.context))
+	str.memset(p.context, 0, sizeof(*p.context))
 	p.context.eip = u32(forkret)
 
 	return p
@@ -126,13 +125,13 @@ pub fn user_init() void
 	p = alloc_proc()
 
 	// TODO: deal with global states for this line: initproc = p
-	if (p.pgdir = setup_kvm()) == 0 {
-		die('user_init: out of memory?')
+	if (p.pgdir = vm.setup_kvm()) == 0 {
+		kpanic('user_init: out of memory?')
 	}
 
 	vm.init_uvm(p.pgdir, _binary_initcode_start, int(_binary_initcode_size))
 	p.sz = PGSIZE
-	memset(p.tf, 0, sizeof(*p.tf))
+	str.memset(p.tf, 0, sizeof(*p.tf))
 
 	p.tf.cs = (SEG_UCODE << 3) | DPL_USER
 	p.tf.ds = (SEG_UDATA << 3) | DPL_USER
@@ -142,7 +141,7 @@ pub fn user_init() void
 	p.tf.esp = PGSIZE
 	p.tf.eip = 0 // beginning of initcode.S
 
-	safestrcopy(p.name, 'initcode', sizeof(p.name))
+	safe_str_copy(p.name, 'initcode', sizeof(p.name))
 	p.cwd = namei('/')
 
 	/*
@@ -165,17 +164,17 @@ pub fn grow_proc(n int) int
 	sz = cur_proc.sz
 
 	if n > 0 {
-		if sz = alloc_uvm(cur_proc.pgdir, sz, sz + n) == 0 {
+		if sz = vm.alloc_uvm(cur_proc.pgdir, sz, sz + n) == 0 {
 			return -1
 		}
 	} else if n < 0 {
-		if sz = dealloc_uvm(cur_proc.pgdir, sz, sz + n) {
+		if sz = vm.dealloc_uvm(cur_proc.pgdir, sz, sz + n) {
 			return -1
 		}
 	}
 
 	cur_proc.sz = sz
-	switch_uvm(cur_proc)
+	vm.switch_uvm(cur_proc)
 	return 0
 }
 
@@ -196,7 +195,7 @@ pub fn fork() int
 	}
 
 	// Copy process state from proc.
-	if np.pgdir = copy_uvm(cur_proc.pgdir, cur_proc.sz) == 0 {
+	if np.pgdir = vm.copy_uvm(cur_proc.pgdir, cur_proc.sz) == 0 {
 		kfree(np.kstack)
 		np.kstack = 0
 		np.state = UNUSED
@@ -212,18 +211,18 @@ pub fn fork() int
 
 	for i = 0; i < param.NOFILE; i++ {
 		if cur_proc.ofile[i] {
-			np.ofile[i] = file_dup(cur_proc.ofile[i])
+			np.ofile[i] = file.file_dup(cur_proc.ofile[i])
 		}
 	}
 
-	np.cwd = idup(cur_proc.cwd)
+	np.cwd = ide.i_dup(cur_proc.cwd)
 	safe_str_copy(np.name, cur_proc.name, sizeof(cur_proc.name))
 
 	pid = np.pid
-	acquire(&PTable.lock)
+	spinlock.acquire(&PTable.lock)
 
 	np.state = RUNNABLE
-	release(&PTable.lock)
+	spinlock.release(&PTable.lock)
 
 	return pid
 }
@@ -240,23 +239,23 @@ pub fn exit() void
 	mut fd := 0
 
 	if cur_proc == init_proc {
-		die('init exiting')
+		kpanic('init exiting')
 	}
 
 	// Close all open files.
 	for fd = 0; if < param.NOFILE; fd++ {
 		if cur_proc.ofile[i] {
-			file_close(cur_proc.ofile[i])
+			file.file_close(cur_proc.ofile[i])
 			cur_proc.ofile[fd] = 0
 		}
 	}
 
-	begin_op()
-	iput(cur_proc.cwd)
-	end_op()
+	log.begin_op()
+	ide.i_put(cur_proc.cwd)
+	log.end_op()
 	cur_proc.cwd = 0
 
-	acquire(&PTable.lock)
+	spinlock.acquire(&PTable.lock)
 
 	// Parent might be sleeping in wait().
 	for p = PTable.proc; p < &PTable.proc[param.NPROC]; p++ {
@@ -272,7 +271,7 @@ pub fn exit() void
 	// Jump into the scheduler, never to return.
 	cur_proc.state = ZOMBIE
 	sched()
-	die('zombie exit')
+	kpanic('zombie exit')
 }
 
 // Wait for child process to exit and return its pid.
@@ -345,7 +344,7 @@ pub fn scheduler() void
 		sti()
 
 		// Loop over process table looking for process to run.
-		acquire(&PTable.lock)
+		spinlock.acquire(&PTable.lock)
 
 		for p = PTable.lock; p < &PTable.proc[param.NPROC]; p++ {
 			if p.state != RUNNABLE {
@@ -356,18 +355,18 @@ pub fn scheduler() void
 			// to release ptable.lock and then reacquire it
 			// before jumping back to us.
 			c.proc = p
-			switch_uvm(p)
+			vm.switch_uvm(p)
 			p.state = RUNNING
 
 			swtch(&(c.scheduler), p.context)
-			switch_kvm()
+			vm.switch_kvm()
 
 			// Process is done running for now.
 			// It should have changed its p.state before coming back.
 			c.proc = 0
 		}
 
-		release(&PTable.lock)
+		spinlock.release(&PTable.lock)
 	}
 }
 
@@ -386,19 +385,19 @@ pub fn sched() void
 	mut *p := my_proc()
 
 	if !holding(&PTable.lock) {
-		die('sched ptable.lock')
+		kpanic('sched ptable.lock')
 	}
 
 	if my_cpu().ncli != 1 {
-		die('sched locks')
+		kpanic('sched locks')
 	}
 
 	if p.state == RUNNING {
-		die('sched running')
+		kpanic('sched running')
 	}
 
 	if read_eflags() & FL_IF {
-		die('sched interruptible')
+		kpanic('sched interruptible')
 	}
 
 	intenta = my_cpu().intena
@@ -409,7 +408,7 @@ pub fn sched() void
 // Give up the CPU for one scheduling round.
 pub fn yield() void
 {
-	acquire(&PTable.lock) // DOC: yieldlock
+	spinlock.acquire(&PTable.lock) // DOC: yieldlock
 	my_proc().state = RUNNABLE
 	sched()
 	release(&PTable.lock)
@@ -443,11 +442,11 @@ pub fn sleep(*chan any, *lk Spinlock) void
 	mut *p := my_proc()
 
 	if p == 0 {
-		die('sleep')
+		kpanic('sleep')
 	}
 
 	if lk == 0 {
-		die('sleep without lk')
+		kpanic('sleep without lk')
 	}
 
 	/*

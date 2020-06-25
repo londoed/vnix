@@ -1,5 +1,11 @@
-// Memory layout
-module memlay
+module mem
+
+import asm
+import dev
+import fs
+import lock
+import proc
+import sys
 
 pub const (
 	EXTMEM = 0x100000 // Start of extended memory

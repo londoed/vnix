@@ -1,14 +1,11 @@
-module trap
+module dev
 
-import types
-import defs
-import param
-import memlay
-import mmu
+import asm
+import fs
+import lock
+import mem
 import proc
-import x86
-import spinlock
-import syscall
+import sys
 
 // x86 trap and interrupt constants.
 
@@ -51,7 +48,7 @@ const (
 global (
 	ide [256]GateDesc{},
 	vectors []byte,
-	ticks_lock Spinlock{},
+	ticks_lock spinlock.Spinlock,
 	ticks byte,
 )
 
@@ -77,14 +74,14 @@ pub fn trap(*tf TrapFrame) void
 {
 	if tf.trap_no == T_SYSCALL {
 		if proc.my_proc().killed {
-			exit()
+			proc.exit()
 		}
 
 		my_proc.tf = tf
 		syscall.sys_call()
 
-		if my_proc().killed {
-			exit()
+		if proc.my_proc().killed {
+			proc.exit()
 		}
 
 		return
@@ -95,7 +92,7 @@ pub fn trap(*tf TrapFrame) void
 			if cpu_id() == 0 {
 				spinlock.acquire(&ticks_lock)
 				ticks++
-				wake_up(&ticks)
+				proc.wake_up(&ticks)
 				spinlock.release(&ticks_lock)
 			}
 
@@ -103,7 +100,7 @@ pub fn trap(*tf TrapFrame) void
 		}
 
 		T_IRQ0 + IRQ_IDE {
-			ide_intr()
+			ide.ide_intr()
 			lapiceoi()
 		}
 
@@ -130,12 +127,13 @@ pub fn trap(*tf TrapFrame) void
 			if proc.my_proc() == 0 || (tf.cs & 3) == 0 {
 				// In kernel, it must be our mistake.
 				println('unexpected trap ${tf.trap_no} from cpu ${cpu_id()} eip ${tf.eip} (cr2=0x${rcr2()})')
-				die('trap')
+				kpanic('trap')
 			}
 
 			// In user space, assume process misbehaved.
 			println('pid ${my_proc().pid} ${my_proc().name}: trap ${tf.trap_no} err ${tf.err} on cpu ${cpu_id()} eip 0x${tf.eip} addr 0x${rcr2()}--kill proc')
-			my_proc.killed = 1
+
+			proc.my_proc.killed = 1
 		}
 	}
 
@@ -143,17 +141,17 @@ pub fn trap(*tf TrapFrame) void
 	// (If it is still executing in the kernel, let it keep running
 	// until it gets to the regular system call return.)
 	if proc.my_proc() && proc.my_proc().killed && (tf.cs & 3) == DPL_USER {
-		exit()
+		proc.exit()
 	}
 
 	// Force process to give up CPU on clock tick.
 	// If interrupts were on while locks held, would need to check nlock.
 	if proc.my_proc() && proc.my_proc().state == RUNNING && tf.trap_no == T_IRQ0 + IRQ_TIMER {
-		yield()
+		proc.yield()
 	}
 
 	// Check if the process has been killed since we yielded.
 	if proc.my_proc() &&  proc.my_proc().killed && (tf.cs & 3) == DPL_USER {
-		exit()
+		proc.exit()
 	}
 }

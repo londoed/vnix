@@ -1,4 +1,11 @@
-module bio
+module mem
+
+import asm
+import dev
+import fs
+import lock
+import proc
+import sys
 
 /*
 Buffer cache.
@@ -22,14 +29,6 @@ The implementation uses two state flags internally:
     and needs to be written to disk.
 */
 
-import types
-import defs
-import param
-import spinlock
-import sleeplock
-import fs
-import buf
-import ide
 
 pub struct BCache {
 	lock spinlock.Spinlock

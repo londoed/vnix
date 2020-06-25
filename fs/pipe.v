@@ -1,14 +1,11 @@
-module pipe
+module fs
 
-import type
-import defs
-import param
-import mmu
+import asm
+import dev
+import lock
+import mem
 import proc
-import fs
-import spinlock
-import sleeplock
-import file
+import sys
 
 pub const PIPE_SIZE = 512
 
@@ -21,7 +18,7 @@ pub struct Pipe {
 	write_open int /* write fd is still open */
 }
 
-pub fn pipe_alloc(mut **f0, mut **f1 Fire)
+pub fn pipe_alloc(mut **f0, mut **f1 File)
 {
 	mut *p := Pipe{}
 

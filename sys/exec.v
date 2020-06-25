@@ -1,15 +1,11 @@
-module exec
+module sys
 
-import type
-import param
-import memlay
-import mmu
-import proc
-import defs
-import x86
-import elf
+import asm
+import dev
 import fs
-import stat
+import lock
+import mem
+import proc
 
 pub fn exec(mut *path byte, mut **argv byte) int
 {

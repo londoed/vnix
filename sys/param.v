@@ -1,4 +1,11 @@
-module param
+module sys
+
+import asm
+import dev
+import fs
+import lock
+import mem
+import proc
 
 pub const (
 	NPROC = 64, // maximum number of processes

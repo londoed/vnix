@@ -1,13 +1,11 @@
-module log
+module fs
 
-import types
-import defs
-import param
-import spinlock
-import sleeplock
-import fs
-import buf
-import bio
+import asm
+import dev
+import lock
+import mem
+import proc
+import sys
 
 /*
 Simple logging that allows concurrent FS system calls.
@@ -79,7 +77,7 @@ pub fn install_trans() void
 		mut *lbuf := bio.b_read(log.dev, log.start + tail + 1) // read log block
 		mut *dbuf := bio.b_read(log.dev, log.ln.block[tail]) // read dst
 
-		memmove(dbuf.data, lbuf.data, fs.B_SIZE) // copy block to dst
+		str.memmove(dbuf.data, lbuf.data, fs.B_SIZE) // copy block to dst
 		bio.b_write(dbuf) // write dst to disk
 		bio.b_relse(lbuf)
 		bio.b_relse(dbuf)
@@ -191,7 +189,7 @@ pub fn write_log() void
 		mut *to := bio.b_read(log.dev, log.start + tail + 1) // log block
 		mut *from := bio.b_read(log.dev, log.lh.block[tail]) // cache block
 
-		memmove(to.data, from.data, fs.B_SIZE)
+		str.memmove(to.data, from.data, fs.B_SIZE)
 		bio.b_write(to) // write the log
 		bio.b_relse(from)
 		bio.b_relse(to)

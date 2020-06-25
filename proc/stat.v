@@ -1,4 +1,11 @@
-module stat
+module proc
+
+import asm
+import dev
+import fs
+import lock
+import mem
+import sys
 
 pub const (
 	T_DIR = 1, // Directory

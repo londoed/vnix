@@ -1,11 +1,11 @@
-module file
+module fs
 
-import types
-import defs
-import param
-import spinlock
-import sleeplock
-import fs
+import asm
+import dev
+import lock
+import mem
+import proc
+import sys
 
 /*
  * File descriptors
@@ -78,11 +78,11 @@ pub fn file_close(mut *f File) void
 	spinlock.release(&FTable.lock)
 
 	if ff.type == FD_PIPE {
-		pipe_close(ff.pipe, ff.writeable)
+		pipe.pipe_close(ff.pipe, ff.writeable)
 	} else if ff.type == FD_INODE {
-		begin_op()
+		stat.begin_op()
 		fs.i_put(ff.ip)
-		end_op()
+		stat.end_op()
 	}
 }
 
@@ -109,7 +109,7 @@ pub fn file_read(mut *f File, mut *addr byte, n int) int
 	}
 
 	if f.type == FD_PIPE {
-		return pipe_read(f.pipe, addr, n)
+		return pipe.pipe_read(f.pipe, addr, n)
 	}
 
 	if f.type == FD_INODE {
@@ -136,7 +136,7 @@ pub fn file_write(mut *f File, mut *addr byte, n int) int
 	}
 
 	if f.type == FD_PIPE {
-		return pipe_write(f.pipe, addr, n)
+		return pipe.pipe_write(f.pipe, addr, n)
 	}
 
 	if f.type == FD_INODE {
@@ -158,7 +158,7 @@ pub fn file_write(mut *f File, mut *addr byte, n int) int
 				n1 = max
 			}
 
-			begin_op()
+			stat.begin_op()
 			fs.i_lock(f.ip)
 
 			if (r = fs.writei(f.ip, addr + i, f.off, ni)) > 0 {
@@ -166,7 +166,7 @@ pub fn file_write(mut *f File, mut *addr byte, n int) int
 			}
 
 			fs.i_unlock(f.ip)
-			end_op()
+			stat.end_op()
 
 			if r < 0 {
 				break

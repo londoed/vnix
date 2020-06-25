@@ -1,13 +1,11 @@
-module syscall
+module sys
 
-import types
-import defs
-import param
-import memlay
-import mmu
+import asm
+import dev
+import fs
+import lock
+import mem
 import proc
-import x86
-import sysproc
 
 const (
 	SYS_FORK = 1,
@@ -151,8 +149,8 @@ pub fn sys_call() void
 
 	num = cur_proc.tf.eax
 
-	if num > 0 && num < param.nelem(sys_calls) && sys_calls[num] {
-		cur_proc.tf.eax = sys_calls[str(num)]
+	if num > 0 && num < param.nelem(sys_calls) && sys_calls[num.str()] {
+		cur_proc.tf.eax = sys_calls[num.str()]
 	} else {
 		println('${cur_proc.pid} ${cur_proc.name}: unknown sys call $num')
 		cur_proc.tf.eax = -1

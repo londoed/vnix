@@ -1,4 +1,12 @@
-module kalloc
+module mem
+
+import asm
+import dev
+import fs
+import lock
+import proc
+import sys
+
 /*
 Physical memory alocator, intended to allocate
 memory for user processes, kernel stacks, page table pages,

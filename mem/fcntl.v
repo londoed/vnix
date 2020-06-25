@@ -1,4 +1,11 @@
-module fctnl
+module mem
+
+import asm
+import dev
+import fs
+import lock
+import proc
+import sys
 
 pub const (
 	O_RDONLY = 0x000,

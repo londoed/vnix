@@ -1,19 +1,12 @@
 // Simple PIO-based (non-DMA) IDE driver code.
-module ide
+module dev
 
-import types
-import defs
-import param
-import memlay
-import mmu
-import proc
-import x86
-import trap
-import spinlock
-import sleeplock
+import asm
 import fs
-import buf
-import syscall
+import lock
+import mem
+import proc
+import sys
 
 pub const (
 	SECTOR_SIZE = 512,
@@ -32,7 +25,7 @@ pub const (
 // You must hold idelock while manipulating queue.
 
 global (
-	ide_lock Spinlock{},
+	ide_lock lock.Spinlock{},
 	*ide_queue Buf{},
 	have_disk1 int,
 )
@@ -42,7 +35,7 @@ pub fn ide_wait(check_err int) int
 {
 	mut r := 0
 
-	for ((r = x86.inb(0x1f7)) & (IDE_BSY | IDE_DRDY)) != 0 {}
+	for ((r = inb(0x1f7)) & (IDE_BSY | IDE_DRDY)) != 0 {}
 
 	if check_err && (r & (IDE_DF | ID_ERR)) != 0 {
 		return -1

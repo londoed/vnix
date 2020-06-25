@@ -1,4 +1,11 @@
-module x86
+module dev
+
+import asm
+import fs
+import lock
+import mem
+import proc
+import sys
 
 [inline]
 pub fn inb(port byte) byte

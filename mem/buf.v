@@ -1,4 +1,11 @@
-module buf
+module mem
+
+import asm
+import dev
+import fs
+import lock
+import proc
+import sys
 
 pub struct Buf {
 	flags int

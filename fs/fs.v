@@ -1,29 +1,24 @@
 module fs
 
-import types
-import defs
-import param
-import stat
-import mmu
+import asm
+import dev
+import lock
+import mem
 import proc
-import spinlock
-import sleeplock
-import buf
-import file
-import bio
+import sys
 
 /*
-File system implementation.  Five layers:
-  + Blocks: allocator for raw disk blocks.
-  + Log: crash recovery for multi-step updates.
-  + Files: inode allocator, reading, writing, metadata.
-  + Directories: inode with special contents (list of other inodes!)
-  + Names: paths like /usr/rtm/vnix/fs.v for convenient naming.
-
-This file contains the low-level file system manipulation
-routines.  The (higher-level) system call implementations
-are in sysfile.v.
-*/
+ * File system implementation.  Five layers:
+ *  + Blocks: allocator for raw disk blocks.
+ *  + Log: crash recovery for multi-step updates.
+ *  + Files: inode allocator, reading, writing, metadata.
+ *  + Directories: inode with special contents (list of other inodes!)
+ *  + Names: paths like /usr/rtm/vnix/fs.v for convenient naming.
+ *
+ * This file contains the low-level file system manipulation
+ * routines.  The (higher-level) system call implementations
+ * are in sysfile.v.
+ */
 
 pub const (
 	ROOTING = 1, // root i-number
@@ -31,12 +26,12 @@ pub const (
 )
 
 /*
-Disk layout:
-[ boot block | super block | log | inode blocks |
-                                       free bit map | data blocks]
-
-mkfs computes the super block and builds an initial file system. The
-super block describes the disk layout:
+ * Disk layout:
+ * [ boot block | super block | log | inode blocks |
+ *                              free bit map | data blocks]
+ *
+ * mkfs computes the super block and builds an initial file system. The
+ * super block describes the disk layout:
 */
 
 pub struct SuperBlock {
@@ -57,16 +52,16 @@ pub const (
 
 // On-disk inode structure
 pub struct Dinode {
-	ftype i16 // File type
-	major i16 // Major device number (stat.T_DEV only)
-	minor i16 // Minor device numbre (stat.T_DEV only)
+	ftype i16 /* File type */
+	major i16 /* Major device number (stat.T_DEV only) */
+	minor i16 /* Minor device numbre (stat.T_DEV only) */
 	n_link i16 // Number of links to inode in file system
 	size byte // Size of file (bytes)
 	addrs [N_DIRECT + 1]byte{} // Data block addresses
 }
 
-// Inodes per block
-pub const IPB = fs.B_SIZE / sizeof(DInode)
+/* Inodes per block */
+pub const IPB = fs.B_SIZE / sizeof(Dinode)
 
 // Block containing inode i
 pub const I_BLOCK = fn(mut i, mut sb) { i / IPB + sb.inode_start }
@@ -97,7 +92,7 @@ global (
 pub fn read_sb(mut dev int, mut *sb SuperBlock) void
 {
 	mut *bp := bio.b_read(dev, 1)
-	memmove(sb, bp.data, sizeof(*sb))
+	str.memmove(sb, bp.data, sizeof(*sb))
 	bio.b_relse(bp)
 }
 
@@ -105,7 +100,7 @@ pub fn read_sb(mut dev int, mut *sb SuperBlock) void
 pub fn b_zero(dev, bno int) void
 {
 	mut *bp := bio.b_read(dev, bno)
-	memset(bp.data, 0, fs.B_SIZE)
+	str.memset(bp.data, 0, fs.B_SIZE)
 
 	log.log_write(bp)
 	bio.b_relse(bp)
@@ -132,7 +127,7 @@ pub fn balloc(mut dev u32) u32
 
 				log.log_write(bp)
 				bio.b_relse(bp)
-				b_zero(dev, b + bi)
+				bio.b_zero(dev, b + bi)
 
 				return b + bi
 			}
@@ -141,7 +136,7 @@ pub fn balloc(mut dev u32) u32
 		bio.b_relse(bp)
 	}
 
-	die('balloc: out of blocks')
+	kpanic('balloc: out of blocks')
 }
 
 // Free a disk block.
@@ -155,7 +150,7 @@ pub fn b_free(mut dev int, mut b u32) void
 	m = 1 << (bi % 8)
 
 	if (bp.data[bi / 8] & m) == 0 {
-		die('freeing free block')
+		kpanic('freeing free block')
 	}
 
 	bp.data[bi / 8] &= ~m
@@ -273,7 +268,7 @@ pub fn ialloc(mut dev u32, mut ttype u16) inode*
 		dip = *Dinode(bp.data + inum % IPB)
 
 		if dip.type == 0 { // a free inode
-			memset(dip, 0, sizeof(*dip))
+			str.memset(dip, 0, sizeof(*dip))
 			dip.type = ttype
 			log.log_write(bp) // mark it allocated on the disk
 			bio.b_relse(bp)
@@ -284,7 +279,7 @@ pub fn ialloc(mut dev u32, mut ttype u16) inode*
 		bio.b_relse(bp)
 	}
 
-	die('ialloc: no inodes')
+	kpanic('ialloc: no inodes')
 }
 
 /*
@@ -307,7 +302,7 @@ pub fn i_update(mut *ip Inode)
 	dip.n_link = ip.n_link
 	dip.size = ip.size
 
-	memmove(dip.addrs, ip.addrs, sizeof(ip.addrs))
+	str.memmove(dip.addrs, ip.addrs, sizeof(ip.addrs))
 	log.log_write(bp)
 	bio.b_relse(bp)
 }
@@ -340,7 +335,7 @@ pub fn i_get(mut dev, mut inum u32) Inode*
 
 	// Recycle an inode cache entry.
 	if empty == 0 {
-		die('i_get: no inodes')
+		kpanic('i_get: no inodes')
 	}
 
 	ip = empty
@@ -372,7 +367,7 @@ pub fn i_lock(mut *ip Inode) void
 	mut *dip := Dinode{}
 
 	if ip == 0 || ip.ref < 1 {
-		die('i_lock')
+		kpanic('i_lock')
 	}
 
 	sleeplock.acquire_sleep(&ip.lock)
@@ -387,13 +382,13 @@ pub fn i_lock(mut *ip Inode) void
 		ip.n_link = dip.n_link
 		ip.size = dip.size
 
-		memmove(ip.addrs, dip.addrs, sizeof(ip.addrs))
+		str.memmove(ip.addrs, dip.addrs, sizeof(ip.addrs))
 		spinlock.b_relse(bp)
 
 		ip.valid = 1
 
 		if ip.type == 0 {
-			die('i_lock: no type')
+			kpanic('i_lock: no type')
 		}
 	}
 }
@@ -402,7 +397,7 @@ pub fn i_lock(mut *ip Inode) void
 pub fn i_unlock(mut *ip Inode) void
 {
 	if ip == 0 || !sleeplock.holding_sleep(ip.lock) || ip.ref < 1 {
-		die('i_unlock')
+		kpanic('i_unlock')
 	}
 
 	sleeplock.release_sleep(&ip.lock)
@@ -492,7 +487,7 @@ pub fn bmap(mut *ip Inode, bn u32) u32
 		return addr
 	}
 
-	die('bmap: out of range')
+	kpanic('bmap: out of range')
 }
 
 /*
@@ -510,7 +505,7 @@ pub fn i_trunc(mut *ip Inode) void
 
 	for i = 0; i < N_DIRECT; i++ {
 		if ip.addrs[i] {
-			bfree(ip.dev, ip.addrs[i])
+			bio.bfree(ip.dev, ip.addrs[i])
 			ip.addrs[i] = 0
 		}
 	}
@@ -521,7 +516,7 @@ pub fn i_trunc(mut *ip Inode) void
 
 		for j = 0; j < NIN_DIRECT; j++ {
 			if a[j] {
-				bfree(ip.dev, a[j])
+				bio.bfree(ip.dev, a[j])
 			}
 		}
 
@@ -571,7 +566,7 @@ pub fn readi(mut *ip Inode, mut *dst byte, mut off, n u32) int
 	for tot = 0; tot < n; tot += m, off += m, dst += m {
 		bp = bio.b_read(ip.dev, bmap(ip, off / B_SIZE))
 		m = min(n - tot, B_SIZE - off % B_SIZE)
-		memmove(dst, bp.data + off % B_SIZE, m)
+		str.memmove(dst, bp.data + off % B_SIZE, m)
 		bio.b_relse(bp)
 	}
 
@@ -604,7 +599,7 @@ pub fn writei(mut *ip Inode, mut *src byte, mut off, n u32) int
 	for tot = 0; tot += m, off += m, src += m {
 		bp = bio.b_read(ip.dev, bmap(ip, off / B_SIZE))
 		m = min(n - tot, B_SIZE - off % B_SIZE)
-		memmove(bp.data + off % B_SIZE, src, m)
+		str.memmove(bp.data + off % B_SIZE, src, m)
 		log.log_write(bp)
 		bio.b_relse(bp)
 	}
@@ -633,12 +628,12 @@ pub fn dir_lookup(mut *dp Inode, mut *name byte, mut *poff u32) Inode
 	mut de := Dirent{}
 
 	if dp.type != T_DIR {
-		die('dir_lookup not DIR')
+		kpanic('dir_lookup not DIR')
 	}
 
 	for off = 0; off < dp.size; off += sizeof(de) {
 		if readi(dp, charptr(&de), off, sizeof(de)) != sizeof(de) {
-			die('dir_lookup read')
+			kpanic('dir_lookup read')
 		}
 
 		if de.inum == 0 {
@@ -675,7 +670,7 @@ pub fn dir_link(mut *dp Inode, mut *name byte, mut inum u32) int
 	// Look for an empty dirent.
 	for off = 0; off < dp.size; off += sizeof(de) {
 		if readi(dp, charptr(&de), off, sizeof(de)) != sizeof(de) {
-			die('dir_link read')
+			kpanic('dir_link read')
 		}
 
 		if de.inum == 0 {
@@ -683,11 +678,11 @@ pub fn dir_link(mut *dp Inode, mut *name byte, mut inum u32) int
 		}
 	}
 
-	strncpy(de.name, name, DIR_SIZ)
+	str.strncpy(de.name, name, DIR_SIZ)
 	de.inum = inum
 
 	if writei(dp, charptr(&de), off, sizeof(de)) != sizeof(de) {
-		die('dir_link')
+		kpanic('dir_link')
 	}
 
 	return 0
@@ -730,9 +725,9 @@ pub fn skip_elem(mut *path, *name byte) charptr
 	len = path - s
 
 	if len >= DIR_SIZ {
-		memmove(name, s, DIR_SIZ)
+		str.memmove(name, s, DIR_SIZ)
 	} else {
-		memmove(name, s, len)
+		str.memmove(name, s, len)
 		name[len] = 0
 	}
 
@@ -783,7 +778,7 @@ pub fn namex(mut *path byte, mut name_iparent int, mut *name byte) Inode*
 	}
 
 	if name_iparent {
-		i_put(ip)
+		ide.i_put(ip)
 		return 0
 	}
 

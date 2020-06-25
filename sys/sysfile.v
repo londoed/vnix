@@ -1,4 +1,11 @@
-module sysfile
+module sys
+
+import asm
+import dev
+import fs
+import lock
+import mem
+import proc
 
 /*
  * File-system system calls.

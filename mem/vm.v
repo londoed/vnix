@@ -1,13 +1,11 @@
-module vm
+module mem
 
-import param
-import types
-import defs
-import x86
-import memlay
-import mmu
+import asm
+import dev
+import fs
+import lock
 import proc
-import elf
+import sys
 
 const (
 	data = []byte{} // defined by kernel.id
@@ -54,7 +52,7 @@ pub fn walk_pgdir(*pgdir pde_t, *va any, alloc int) pde_t *
 		}
 
 		// Make sure all those PTE_P bits are zero
-		memset(pgtab, 0, PGSIZE)
+		str.memset(pgtab, 0, PGSIZE)
 
 		/*
 		The permissions here are overly generous, but they can
@@ -148,7 +146,7 @@ pub fn setup_kvm() pde_t* {
 		return 0
 	}
 
-	memset(pgdir, 0, PGSIZE)
+	str.memset(pgdir, 0, PGSIZE)
 
 	if p2v(PHYSTOP) > voidptr(DEVSPACE) {
 		die('PHYSTPE too high')
@@ -213,9 +211,9 @@ pub fn init_uvm(*pgdir pde_t, *init byte, sz u32) void
 	}
 
 	mem = kalloc()
-	memset(mem, 0, PGSIZE)
+	str.memset(mem, 0, PGSIZE)
 	mappages(pgdir, 0, PGSIZE, v2p(mem), PTE_W | PRE_U)
-	memmove(mem, init, sz)
+	str.memmove(mem, init, sz)
 }
 
 // Load a program segment into pgdir. addr must be page-aligned
@@ -270,7 +268,7 @@ pub fn alloc_uvm(*pgdir pde_t, oldsz, newsz u32) int
 			return 0
 		}
 
-		memset(mem, 0, PGSIZE)
+		str.memset(mem, 0, PGSIZE)
 
 		if mappages(pgdir, charptr(a), PGSIZE, v2p(mem), PTE_W | PTE_U) < 0 {
 			println('alloc_uvm out of memory (2)')
@@ -386,7 +384,7 @@ pub fn copy_uvm(*pgdir pde_t, sz u32) pde_t*
 			goto bad
 		}
 
-		memmove(mem, charptr(p2v(pa)), PGSIZE)
+		str.memmove(mem, charptr(p2v(pa)), PGSIZE)
 
 		if mappages(d, voidptr(i), PGSIZE, v2p(mem), flags) < 0 {
 			kfree(mem)
@@ -443,7 +441,7 @@ pub fn copy_out(*pgdir pde_t, va u32, *p any, len uint)
 			n = len
 		}
 
-		memmove(pa0 + (va - va0), buf, n)
+		str.memmove(pa0 + (va - va0), buf, n)
 		len -= n
 		buf += n
 		va = va0 + PGSIZE
