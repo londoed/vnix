@@ -61,13 +61,13 @@ pub struct Dinode {
 }
 
 /* Inodes per block */
-pub const IPB = fs.B_SIZE / sizeof(Dinode)
+pub const IPB = B_SIZE / sizeof(Dinode)
 
 // Block containing inode i
 pub const I_BLOCK = fn(mut i, mut sb) { i / IPB + sb.inode_start }
 
 // Bitmap bites per block
-pub const BPB = fs.B_SIZE * 8
+pub const BPB = B_SIZE * 8
 
 // Block of free map containing bit for block b
 pub const B_BLOCK = fn(mut b, mut sb) { b / BPB + sb.bmap_start }
@@ -91,19 +91,19 @@ global (
 // Read the superblock.
 pub fn read_sb(mut dev int, mut *sb SuperBlock) void
 {
-	mut *bp := bio.b_read(dev, 1)
-	str.memmove(sb, bp.data, sizeof(*sb))
-	bio.b_relse(bp)
+	mut *bp := mem.b_read(dev, 1)
+	sys.memmove(sb, bp.data, sizeof(*sb))
+	mem.b_relse(bp)
 }
 
 // Zero a block.
 pub fn b_zero(dev, bno int) void
 {
-	mut *bp := bio.b_read(dev, bno)
-	str.memset(bp.data, 0, fs.B_SIZE)
+	mut *bp := mem.b_read(dev, bno)
+	sys.memset(bp.data, 0, B_SIZE)
 
-	log.log_write(bp)
-	bio.b_relse(bp)
+	log_write(bp)
+	mem.b_relse(bp)
 }
 
 // Blocks.
@@ -117,7 +117,7 @@ pub fn balloc(mut dev u32) u32
 	bp = 0
 
 	for b = 0; b < sb.block; b += BPB {
-		bp = bio.b_read(dev, B_BLOCK(b, sb))
+		bp = mem.b_read(dev, B_BLOCK(b, sb))
 
 		for bi = 0; bi < BPB && b + bi < sb.size; bi++ {
 			m = 1 << (bi % 8)
@@ -125,15 +125,15 @@ pub fn balloc(mut dev u32) u32
 			if (bp.data[bi / 8] & m) == 0 { // Is block free?
 				bp.data[bi / 8] |= m // Mark block in use
 
-				log.log_write(bp)
-				bio.b_relse(bp)
-				bio.b_zero(dev, b + bi)
+				log_write(bp)
+				mem.b_relse(bp)
+				mem.b_zero(dev, b + bi)
 
 				return b + bi
 			}
 		}
 
-		bio.b_relse(bp)
+		mem.b_relse(bp)
 	}
 
 	kpanic('balloc: out of blocks')
@@ -145,7 +145,7 @@ pub fn b_free(mut dev int, mut b u32) void
 	mut *bp := buf.Buf{}
 	mut bi, m := 0
 
-	bp = bio.b_read(dev, B_BLOCK(b, sb))
+	bp = mem.b_read(dev, B_BLOCK(b, sb))
 	bi = b & BPB
 	m = 1 << (bi % 8)
 
@@ -154,8 +154,8 @@ pub fn b_free(mut dev int, mut b u32) void
 	}
 
 	bp.data[bi / 8] &= ~m
-	log.log_write(bp)
-	bio.b_relse(bp)
+	log_write(bp)
+	mem.b_relse(bp)
 }
 
 /*
@@ -230,18 +230,18 @@ pub fn b_free(mut dev int, mut b u32) void
 */
 
 pub struct ICache {
-	lock spinlock.Spinlock
-	inode [param.NINODE]INode
+	lock lock.Spinlock
+	inode [sys.NINODE]INode
 }
 
 pub fn i_init(mut dev int) void
 {
 	mut i := 0
 
-	spinlock.init_lock(&ICache.lock, 'icache')
+	lock.init_lock(&ICache.lock, 'icache')
 
 	for i = 0; i < param.NINODE; i++ {
-		sleeplock.init_sleeplock(&ICache.inode[i].lock, 'inode')
+		lock.init_sleeplock(&ICache.inode[i].lock, 'inode')
 	}
 
 	read_sb(dev, &sb)
@@ -264,19 +264,19 @@ pub fn ialloc(mut dev u32, mut ttype u16) inode*
 	mut *dip := Dinode{}
 
 	for inum = 1; inum < sb.n_inodes; inum++ {
-		bp = bio.b_read(dev, IBLOCK(inum, sb))
+		bp = mem.b_read(dev, IBLOCK(inum, sb))
 		dip = *Dinode(bp.data + inum % IPB)
 
 		if dip.type == 0 { // a free inode
-			str.memset(dip, 0, sizeof(*dip))
+			sys.memset(dip, 0, sizeof(*dip))
 			dip.type = ttype
-			log.log_write(bp) // mark it allocated on the disk
-			bio.b_relse(bp)
+			log_write(bp) // mark it allocated on the disk
+			mem.b_relse(bp)
 
 			return i_get(dev, inum)
 		}
 
-		bio.b_relse(bp)
+		mem.b_relse(bp)
 	}
 
 	kpanic('ialloc: no inodes')
@@ -293,7 +293,7 @@ pub fn i_update(mut *ip Inode)
 	mut *bp := buf.Buf{}
 	mut *dip := Dinode{}
 
-	bp = bio.b_read(ip.dev, IBLOCK(ip.inum, sb))
+	bp = mem.b_read(ip.dev, IBLOCK(ip.inum, sb))
 	dip = *Dinode(bp.data) + ip.inum % IPB
 
 	dip.type = ip.type
@@ -302,9 +302,9 @@ pub fn i_update(mut *ip Inode)
 	dip.n_link = ip.n_link
 	dip.size = ip.size
 
-	str.memmove(dip.addrs, ip.addrs, sizeof(ip.addrs))
-	log.log_write(bp)
-	bio.b_relse(bp)
+	sys.memmove(dip.addrs, ip.addrs, sizeof(ip.addrs))
+	sys.log_write(bp)
+	mem.b_relse(bp)
 }
 
 /*
@@ -315,15 +315,15 @@ the inode and does not read it from disk.
 pub fn i_get(mut dev, mut inum u32) Inode*
 {
 	mut *ip, *empty := Inode{}
-	spinlock.acquire(&ICache.lock)
+	lock.acquire(&ICache.lock)
 
 	// Is the inode already cached
 	empty = 0
 
-	for ip = &ICache.inode[0]; ip < &ICache.inode[param.NINODE]; ip++ {
+	for ip = &ICache.inode[0]; ip < &ICache.inode[sys.NINODE]; ip++ {
 		if ip.ref > 0 && ip.dev == dev && ip.inum == inum {
 			ip.ref++
-			spinlock.release(&ICache.lock)
+			lock.release(&ICache.lock)
 
 			return ip
 		}
@@ -343,7 +343,7 @@ pub fn i_get(mut dev, mut inum u32) Inode*
 	ip.inum = inum
 	ip.ref = 1
 	ip.valid = 0
-	spinlock.release(&ICache.lock)
+	lock.release(&ICache.lock)
 
 	return ip
 }
@@ -352,9 +352,9 @@ pub fn i_get(mut dev, mut inum u32) Inode*
 // Returns ip to enable ip = i_dup(ip1) idiom.
 pub fn i_dup(mut *ip Inode) Inode*
 {
-	spinlock.acquire(&ICache.lock)
+	lock.acquire(&ICache.lock)
 	ip.ref++
-	spinlock.release(*ICache.lock)
+	lock.release(*ICache.lock)
 
 	return ip
 }
@@ -363,17 +363,17 @@ pub fn i_dup(mut *ip Inode) Inode*
 // Reads the inode from disk if necessary.
 pub fn i_lock(mut *ip Inode) void
 {
-	mut *bp := buf.Buf{}
+	mut *bp := mem.Buf{}
 	mut *dip := Dinode{}
 
 	if ip == 0 || ip.ref < 1 {
 		kpanic('i_lock')
 	}
 
-	sleeplock.acquire_sleep(&ip.lock)
+	lock.acquire_sleep(&ip.lock)
 
 	if ip.valid == 0 {
-		bp = buf.b_read(ip.dev, IBLOCK(ip.inum, sb))
+		bp = sys.b_read(ip.dev, IBLOCK(ip.inum, sb))
 		dip = *Dinode(bp.data, ip.inum % IPB)
 
 		ip.type = dip.type
@@ -382,8 +382,8 @@ pub fn i_lock(mut *ip Inode) void
 		ip.n_link = dip.n_link
 		ip.size = dip.size
 
-		str.memmove(ip.addrs, dip.addrs, sizeof(ip.addrs))
-		spinlock.b_relse(bp)
+		sys.memmove(ip.addrs, dip.addrs, sizeof(ip.addrs))
+		lock.b_relse(bp)
 
 		ip.valid = 1
 
@@ -396,11 +396,11 @@ pub fn i_lock(mut *ip Inode) void
 // Unlock the given inode.
 pub fn i_unlock(mut *ip Inode) void
 {
-	if ip == 0 || !sleeplock.holding_sleep(ip.lock) || ip.ref < 1 {
+	if ip == 0 || !lock.holding_sleep(ip.lock) || ip.ref < 1 {
 		kpanic('i_unlock')
 	}
 
-	sleeplock.release_sleep(&ip.lock)
+	lock.release_sleep(&ip.lock)
 }
 
 /*
@@ -414,12 +414,12 @@ case it has to free the inode.
 */
 pub fn i_put(mut *ip Inode) void
 {
-	sleeplock.acquire_sleep(&ip.lock)
+	lock.acquire_sleep(&ip.lock)
 
 	if ip.valid && ip.n_link == 0 {
-		spinlock.acquire(&ICache.lock)
+		lock.acquire(&ICache.lock)
 		mut r := ip.ref
-		spinlock.release(&ICache.lock)
+		lock.release(&ICache.lock)
 
 		if r == 1 {
 			// inode has no links and no other references: truncate and free.
@@ -430,10 +430,10 @@ pub fn i_put(mut *ip Inode) void
 		}
 	}
 
-	sleeplock.release_sleep(&ip.lock)
-	spinlock.acquire(&ICache.lock)
+	lock.release_sleep(&ip.lock)
+	lock.acquire(&ICache.lock)
 	ip.ref--
-	spinlock.release(&ICache.lock)
+	lock.release(&ICache.lock)
 }
 
 // Common idiom: unlock, then put.
@@ -457,7 +457,7 @@ If there is no such block, bmap allocates one.
 pub fn bmap(mut *ip Inode, bn u32) u32
 {
 	mut addr, *a := u32(0)
-	mut *bp := buf.Buf{}
+	mut *bp := mem.Buf{}
 
 	if bn < N_DIRECT {
 		if (addr = ip.addrs[bn]) == 0 {
@@ -467,23 +467,23 @@ pub fn bmap(mut *ip Inode, bn u32) u32
 		return addr
 	}
 
-	bn -= param.N_DIRECT
+	bn -= sys.N_DIRECT
 
-	if bn < NIN_DIRECT {
+	if bn < sys.NIN_DIRECT {
 		// Load iN_DIRECT block, allocating if necessary.
 		if (addr = ip.addrs[N_DIRECT]) == 0 {
-			ip.addrs[N_DIRECT] = addr = balloc(ip.dev)
+			ip.addrs[sys.N_DIRECT] = addr = balloc(ip.dev)
 		}
 
-		bp = bio.b_read(ip.dev, addr)
+		bp = mem.b_read(ip.dev, addr)
 		a = *u32(bp.data)
 
 		if (addr = a[bn]) == 0 {
 			a[bn] = addr = balloc(ip.dev)
-			log.log_write(bp)
+			sys.log_write(bp)
 		}
 
-		bio.b_relse(bp)
+		mem.b_relse(bp)
 		return addr
 	}
 
@@ -505,7 +505,7 @@ pub fn i_trunc(mut *ip Inode) void
 
 	for i = 0; i < N_DIRECT; i++ {
 		if ip.addrs[i] {
-			bio.bfree(ip.dev, ip.addrs[i])
+			b_free(ip.dev, ip.addrs[i])
 			ip.addrs[i] = 0
 		}
 	}
@@ -516,12 +516,12 @@ pub fn i_trunc(mut *ip Inode) void
 
 		for j = 0; j < NIN_DIRECT; j++ {
 			if a[j] {
-				bio.bfree(ip.dev, a[j])
+				b_free(ip.dev, a[j])
 			}
 		}
 
-		bio.b_relse(bp)
-		bfree(ip.dev, ip.addrs[N_DIRECT])
+		mem.b_relse(bp)
+		b_free(ip.dev, ip.addrs[N_DIRECT])
 		ip.addrs[N_DIRECT] = 0
 	}
 
@@ -545,10 +545,10 @@ pub fn stati(mut *ip Inode, mut *st Stat) void
 pub fn readi(mut *ip Inode, mut *dst byte, mut off, n u32) int
 {
 	mut tot, m := u32(0)
-	mut *bp := buf.Buf{}
+	mut *bp := mem.Buf{}
 
-	if ip.type == stat.T_DEV {
-		if ip.major < 0 || ip.major >= NDEV || !devsw[ip.major].read {
+	if ip.type == proc.T_DEV {
+		if ip.major < 0 || ip.major >= sys.NDEV || !devsw[ip.major].read {
 			return -1
 		}
 
@@ -564,10 +564,10 @@ pub fn readi(mut *ip Inode, mut *dst byte, mut off, n u32) int
 	}
 
 	for tot = 0; tot < n; tot += m, off += m, dst += m {
-		bp = bio.b_read(ip.dev, bmap(ip, off / B_SIZE))
+		bp = mem.b_read(ip.dev, bmap(ip, off / B_SIZE))
 		m = min(n - tot, B_SIZE - off % B_SIZE)
-		str.memmove(dst, bp.data + off % B_SIZE, m)
-		bio.b_relse(bp)
+		sys.memmove(dst, bp.data + off % B_SIZE, m)
+		mem.b_relse(bp)
 	}
 
 	return n
@@ -578,10 +578,10 @@ pub fn readi(mut *ip Inode, mut *dst byte, mut off, n u32) int
 pub fn writei(mut *ip Inode, mut *src byte, mut off, n u32) int
 {
 	mut tot, m := u32(0)
-	mut *bp := buf.Buf{}
+	mut *bp := mem.Buf{}
 
-	if ip.type == stat.T_DEV {
-		if ip.major < 0 || ip.major >= NDEV || !devsw[ip.major].write {
+	if ip.type == proc.T_DEV {
+		if ip.major < 0 || ip.major >= sys.NDEV || !devsw[ip.major].write {
 			return -1
 		}
 
@@ -597,11 +597,11 @@ pub fn writei(mut *ip Inode, mut *src byte, mut off, n u32) int
 	}
 
 	for tot = 0; tot += m, off += m, src += m {
-		bp = bio.b_read(ip.dev, bmap(ip, off / B_SIZE))
+		bp = mem.b_read(ip.dev, bmap(ip, off / B_SIZE))
 		m = min(n - tot, B_SIZE - off % B_SIZE)
-		str.memmove(bp.data + off % B_SIZE, src, m)
-		log.log_write(bp)
-		bio.b_relse(bp)
+		sys.memmove(bp.data + off % B_SIZE, src, m)
+		log_write(bp)
+		mem.b_relse(bp)
 	}
 
 	if n > 0 && off > ip.size {
@@ -725,9 +725,9 @@ pub fn skip_elem(mut *path, *name byte) charptr
 	len = path - s
 
 	if len >= DIR_SIZ {
-		str.memmove(name, s, DIR_SIZ)
+		sys.memmove(name, s, DIR_SIZ)
 	} else {
-		str.memmove(name, s, len)
+		sys.memmove(name, s, len)
 		name[len] = 0
 	}
 
@@ -749,7 +749,7 @@ pub fn namex(mut *path byte, mut name_iparent int, mut *name byte) Inode*
 	mut *ip, *next := Inode{}
 
 	if *path == '/' {
-		ip = i_get(param.ROOTDEV, ROOTING)
+		ip = i_get(sys.ROOTDEV, ROOTING)
 	} else {
 		ip = i_dup(proc.my_proc().cwd)
 	}
