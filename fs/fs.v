@@ -231,7 +231,7 @@ pub fn b_free(mut dev int, mut b u32) void
 
 pub struct ICache {
 	lock lock.Spinlock
-	inode [sys.NINODE]INode
+	inode [sys.NINODE]Inode
 }
 
 pub fn i_init(mut dev int) void
