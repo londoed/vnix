@@ -109,7 +109,7 @@ pub fn b_zero(dev, bno int) void
 // Blocks.
 
 // Allocate a zeroed disk block.
-pub fn balloc(mut dev u32) u32
+pub fn b_alloc(mut dev u32) u32
 {
 	mut b, bi, m := 0
 	mut *bp := buf.Buf{}
@@ -136,7 +136,7 @@ pub fn balloc(mut dev u32) u32
 		mem.b_relse(bp)
 	}
 
-	kpanic('balloc: out of blocks')
+	kpanic('b_alloc: out of blocks')
 }
 
 // Free a disk block.
@@ -257,7 +257,7 @@ Allocate an inode on device dev.
 Mark it as allocated by  giving it type type.
 Returns an unlocked but allocated and referenced inode.
 */
-pub fn ialloc(mut dev u32, mut ttype u16) inode*
+pub fn i_alloc(mut dev u32, mut ttype u16) inode*
 {
 	mut inum := 0
 	mut *bp := buf.Buf{}
@@ -279,7 +279,7 @@ pub fn ialloc(mut dev u32, mut ttype u16) inode*
 		mem.b_relse(bp)
 	}
 
-	kpanic('ialloc: no inodes')
+	io.kpanic('i_alloc: no inodes')
 }
 
 /*

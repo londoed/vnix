@@ -25,11 +25,11 @@ pub fn pipe_alloc(mut **f0, mut **f1 File)
 	p = 0
 	*f0 = *f1 = 0
 
-	if (*f0 = file.file_alloc()) == 0 || (*f1 = file.file_alloc()) == 0 {
+	if (*f0 = fs.file_alloc()) == 0 || (*f1 = fs.file_alloc()) == 0 {
 		goto bad
 	}
 
-	if (p = Pipe*(kalloc())) == 0 {
+	if (p = *Pipe(kalloc())) == 0 {
 		goto bad
 	}
 
@@ -38,7 +38,7 @@ pub fn pipe_alloc(mut **f0, mut **f1 File)
 	p.n_write = 0
 	p.n_read = 0
 
-	spinlock.init_lock(&p.lock, 'pipe')
+	lock.init_lock(&p.lock, 'pipe')
 
 	*f0.type = FD_PIPE
 	*fo.readable = 1
@@ -70,7 +70,7 @@ bad:
 
 pub fn pipe_close(mut *p Pipe, mut writeable int) void
 {
-	spinlock.acquire(&p.lock)
+	lock.acquire(&p.lock)
 
 	if writeable {
 		p.write_open = 0
@@ -81,10 +81,10 @@ pub fn pipe_close(mut *p Pipe, mut writeable int) void
 	}
 
 	if p.read_open == 0 && p.write_open == 0 {
-		spinlock.release(&p.lock)
+		lock.release(&p.lock)
 		kfree(charptr(p))
 	} else {
-		spinlock.release(&p.lock)
+		lock.release(&p.lock)
 	}
 }
 
@@ -92,7 +92,7 @@ pub fn pipe_write(mut *p Pipe, *addr byte, n int) int
 {
 	mut i := 0
 
-	spinlock.acquire(&p.lock)
+	lock.acquire(&p.lock)
 
 	for i = 0; i < n; i++ {
 		for p.n_write == p.n_read + PIPE_SIZE { /* DOC: pipe_write_full */
@@ -109,7 +109,7 @@ pub fn pipe_write(mut *p Pipe, *addr byte, n int) int
 	}
 
 	wake_up(&p.n_read) /* DOC: pipe_write_wakeup1 */
-	spinlock.release(&p.lock)
+	lock.release(&p.lock)
 
 	return n
 }
@@ -118,11 +118,11 @@ pub fn pipe_read(mut *p Pipe, *addr byte, n int) int
 {
 	mut i := 0
 
-	spinlock.acquire(&p.lock)
+	lock.acquire(&p.lock)
 
 	for p.n_read == p.n_write && p.write_open { /* DOC: pipe-empty */
 		if proc.my_proc().killed {
-			spinlock.release(&p.lock)
+			lock.release(&p.lock)
 			return -1
 		}
 
@@ -138,7 +138,7 @@ pub fn pipe_read(mut *p Pipe, *addr byte, n int) int
 	}
 
 	wake_up(&p.n_write) /* DOC: pipe_read_wakeup */
-	spinlock.release(&p.lock)
+	lock.release(&p.lock)
 
 	return i
 }

@@ -26,7 +26,7 @@ pub const (
 
 global (
 	ide_lock lock.Spinlock{},
-	*ide_queue Buf{},
+	*ide_queue mem.Buf{},
 	have_disk1 int,
 )
 
@@ -35,7 +35,7 @@ pub fn ide_wait(check_err int) int
 {
 	mut r := 0
 
-	for ((r = inb(0x1f7)) & (IDE_BSY | IDE_DRDY)) != 0 {}
+	for ((r = asm.inb(0x1f7)) & (IDE_BSY | IDE_DRDY)) != 0 {}
 
 	if check_err && (r & (IDE_DF | ID_ERR)) != 0 {
 		return -1
@@ -48,33 +48,33 @@ pub fn ide_init() void
 {
 	mut i := 0
 
-	spinlock.init_lock(&ide_lock, 'ide')
-	ioapicenable(IRQ_IDE, ncpu - 1)
+	lock.init_lock(&ide_lock, 'ide')
+	ioapic_enable(IRQ_IDE, ncpu - 1)
 	ide_wait(0)
 
 	// Check if disk 1 is present
-	x86.outb(0x1f6, 0xe0 | (1 << 4))
+	asm.outb(0x1f6, 0xe0 | (1 << 4))
 
 	for i = 0; i < 1000; i++ {
-		if x86.inb(0x1f7) != 0 {
+		if asm.inb(0x1f7) != 0 {
 			have_disk1 = 1
 			break
 		}
 	}
 
 	// Switch back to disk 0.
-	x86.outb(0x1f6, 0xe0 | (0 << 4))
+	asm.outb(0x1f6, 0xe0 | (0 << 4))
 }
 
 // Start the request for b. Caller must hold ide_lock.
-pub fn ide_start(*b Buf) void
+pub fn ide_start(*b mem.Buf) void
 {
 	if b == 0 {
-		die('ide_start')
+		io.kpanic('ide_start')
 	}
 
 	if b.block_no >= FSIZE {
-		die('incorrect block_no')
+		io.kpanic('incorrect block_no')
 	}
 
 	mut sector_per_block := fs.B_SIZE / SECTOR_SIZE
@@ -83,36 +83,36 @@ pub fn ide_start(*b Buf) void
 	mut write_cmd := IDE_CMD_WRITE if sector_per_block == 1 else IDE_CMD_WRMUL
 
 	if sector_per_block > 7 {
-		die('ide_start')
+		io.kpanic('ide_start')
 	}
 
 	ide_wait(0)
 
-	x86.outb(0x3f6, 0) // generate interrupt
-	x86.outb(0x1f2, sector_per_block) // number of sectors
-	x86.outb(0x1f3, sector & 0xff)
-	x86.outb(0x1f4, (sector >> 8) & 0xff)
-	x86.outb(0x1f5, (sector >> 16) & 0xff)
-	x86.outb(0x1f6, 0xe0 | ((b.dev & 1) << 4) | ((sector >> 24) & 0xff))
+	asm.outb(0x3f6, 0) // generate interrupt
+	asm.outb(0x1f2, sector_per_block) // number of sectors
+	asm.outb(0x1f3, sector & 0xff)
+	asm.outb(0x1f4, (sector >> 8) & 0xff)
+	asm.outb(0x1f5, (sector >> 16) & 0xff)
+	asm.outb(0x1f6, 0xe0 | ((b.dev & 1) << 4) | ((sector >> 24) & 0xff))
 
 	if b.flags * B_DIRTY {
-		x86.outb(0x1f7, write_cmd)
-		x86.outsl(0x1f10, b.data, fs.B_SIZE / 4)
+		asm.outb(0x1f7, write_cmd)
+		asm.outsl(0x1f10, b.data, fs.B_SIZE / 4)
 	} else {
-		x86.outb(0x1f7, read_cmd)
+		asm.outb(0x1f7, read_cmd)
 	}
 }
 
 // Interrupt handler.
 pub fn ide_intr() void
 {
-	mut *b := Buf{}
+	mut *b := mem.Buf{}
 
 	// First queued buffer is the active request.
-	spinlock.acquire(&ide_lock)
+	lock.acquire(&ide_lock)
 
 	if (b == ide_queue) == 0 {
-		spinlock.release(&ide_lock)
+		lock.release(&ide_lock)
 		return
 	}
 
@@ -120,7 +120,7 @@ pub fn ide_intr() void
 
 	// Read data if needed.
 	if !(b.flags & B_DIRTY) && ide_wait(1) >= 0 {
-		x86.insl(0x1f0, b.data, fs.B_SIZE / 4)
+		asm.insl(0x1f0, b.data, fs.B_SIZE / 4)
 	}
 
 	// Wake up process waiting for this buf.
@@ -133,7 +133,7 @@ pub fn ide_intr() void
 		ide_start(ide_queue)
 	}
 
-	spinlock.release(&idek_lock)
+	lock.release(&ide_lock)
 }
 
 /*
@@ -142,23 +142,23 @@ If B_DIRTY is set, write buf to disk, clear B_DIRTY, set B_VALID.
  Else if B_VALID is not set, read buf from disk, set B_VALID.
 */
 
-pub fn iderw(*b Buf) void
+pub fn ide_rw(*b mem.Buf) void
 {
-	*pp := Buf{}
+	*pp := mem.Buf{}
 
 	if !holding_sleep(&b.lock) {
-		die('iderw: buf not locked')
+		io.kpanic('iderw: buf not locked')
 	}
 
 	if (b.flags & (B_VALID | B_DIRTY)) == B_VALID {
-		die('iderw: nothing to do')
+		io.kpanic('iderw: nothing to do')
 	}
 
 	if b.dev != 0 && !have_disk1 {
-		die('iderw: ide disk 1 not present')
+		io.kpanic('iderw: ide disk 1 not present')
 	}
 
-	spinlock.acquire(&ide_lock) // DOC: acquire-lock
+	lock.acquire(&ide_lock) // DOC: acquire-lock
 
 	// Append b to ide_queue
 	b.next = 0
@@ -174,8 +174,8 @@ pub fn iderw(*b Buf) void
 
 	// Wait for request to finish.
 	for (b.flags & (B_VALID | B_DIRTY) != B_VALID) {
-		sleep(b, &ide_lock)
+		proc.sleep(b, &ide_lock)
 	}
 
-	spinlock.release(&ide_lock)
+	lock.release(&ide_lock)
 }

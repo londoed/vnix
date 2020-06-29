@@ -48,7 +48,7 @@ const (
 global (
 	ide [256]GateDesc{},
 	vectors []byte,
-	ticks_lock spinlock.Spinlock,
+	ticks_lock lock.Spinlock,
 	ticks byte,
 )
 

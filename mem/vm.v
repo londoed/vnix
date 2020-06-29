@@ -441,7 +441,7 @@ pub fn copy_out(*pgdir pde_t, va u32, *p any, len uint)
 			n = len
 		}
 
-		str.memmove(pa0 + (va - va0), buf, n)
+		sys.memmove(pa0 + (va - va0), buf, n)
 		len -= n
 		buf += n
 		va = va0 + PGSIZE

@@ -40,7 +40,7 @@ pub struct LogHeader {
 }
 
 pub struct Log {
-	lock spinlock.Spinlock
+	lock lock.Spinlock
 	start int
 	size int
 	outstanding int // how many FS sys calls are executing.
@@ -56,11 +56,11 @@ global (
 pub fn init_log(dev int) void
 {
 	if sizeof(LogHeader) >= fs.B_SIZE {
-		die('init_log: too big LogHeader')
+		kpanic('init_log: too big LogHeader')
 	}
 
 	mut sb := SuperBlock{}
-	spinlock.init_lock(&log.lock, 'log')
+	lock.init_lock(&log.lock, 'log')
 	read_sb(dev, &sb)ideque
 	log.start = sb.log_start
 	log.size = sb.n_log
@@ -130,17 +130,17 @@ pub fn recover_from_log() void
 // Called at the start of each FS system call.
 pub fn begin_op() void
 {
-	spinlock.acquire(&log.back)
+	lock.acquire(&log.back)
 
 	for {
 		if log.committing {
 			sleep(&log, &log.lock)
-		} else if log.lh.n + (log.outstanding + 1) * param.MAXOPBLOCKS > param.LOGSIZE {
+		} else if log.lh.n + (log.outstanding + 1) * param.MAXOPBLOCKS > sys.LOGSIZE {
 			// this op might exhaust log space; wait for commit.
 			sleep(&log, &log.lock)
 		} else {
 			log.outstanding++
-			spinlock.release(&log.lock)
+			lock.release(&log.lock)
 			break
 		}
 	}
@@ -156,7 +156,7 @@ pub fn end_op() void
 	log.outstanding--
 
 	if log.committing {
-		die('log.committing')
+		kpanic('log.committing')
 	}
 
 	if log.outstanding == 0 {
@@ -173,10 +173,10 @@ pub fn end_op() void
 		// call commit w/o holding locks, since not allowed
 		// to sleep with locks.
 		commit()
-		spinlock.acquire(&log.lock)
+		lock.acquire(&log.lock)
 		log.committing = 0
 		wake_up(&log)
-		spinlock.release(&log.lock)
+		lock.release(&log.lock)
 	}
 }
 
@@ -224,14 +224,14 @@ pub fn log_write(*b buf.Buf)
 	mut i := 0
 
 	if log.lh.n >= LOG_SIZE || log.lh.n >= log.size - 1 {
-		die('too big a transaction')
+		kpanic('too big a transaction')
 	}
 
 	if log.outstanding < 1 {
-		die('log_write outside of trans')
+		kpanic('log_write outside of trans')
 	}
 
-	spinlock.acquire(&log.lock)
+	lock.acquire(&log.lock)
 
 	for i = 0; i < log.lh.n; i++ {
 		if log.lh.block[i] == b.block_no {
@@ -246,5 +246,5 @@ pub fn log_write(*b buf.Buf)
 	}
 
 	b.flags |= buf.B_DIRTY // prevent eviction
-	spinlock.release(&log.lock)
+	lock.release(&log.lock)
 }

@@ -12,7 +12,7 @@ struct PTable {
 	proc[param.NPROC] Proc{},
 }
 
-mut nextpid := int(0)
+mut next_pid := int(0)
 
 pub fn p_init() void
 {

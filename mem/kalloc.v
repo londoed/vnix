@@ -39,14 +39,14 @@ the pages mapped by entrypgdir on free list.
 2. main() calls kinit2() with the rest of the physical pages
 after installing a full page table that maps them on all cores.
 */
-pub fn kinit1(*vstart, *vend any) void
+pub fn k_init1(*vstart, *vend any) void
 {
 	init_lock(&KMem.lock, 'kmem')
 	KMem.use_lock = 0
 	free_range(vstart, vend)
 }
 
-pub fn kinit2(*vstart, *vend any) void
+pub fn k_init2(*vstart, *vend any) void
 {
 	free_range(vstart, vend)
 	KMem.use_lock = 1
@@ -68,7 +68,7 @@ which normally should have been returned by a
 call to kalloc().  (The exception is when
 initializing the allocator; see kinit() above.)
 */
-pub fn kfree(*v byte) void
+pub fn k_free(*v byte) void
 {
 	mut *r := Run{}
 
@@ -77,7 +77,7 @@ pub fn kfree(*v byte) void
 	}
 
 	// Fill with junk to catch dangling references.
-	memset(v, 1, PGSIZE)
+	sys.memset(v, 1, PGSIZE)
 
 	if KMem.use_lock {
 		acquire(&KMem.lock)
@@ -88,7 +88,7 @@ pub fn kfree(*v byte) void
 	KMem.free_list = r
 
 	if KMem.use_lock {
-		release(&KMem.lock)
+		lock.release(&KMem.lock)
 	}
 }
 
@@ -97,7 +97,7 @@ Allocate one 4096-byte page of physical memory.
 Returns a pointer that the kernel can use.
 Returns 0 if the memory cannot be allocated.
 */
-pub fn kalloc() charptr {
+pub fn k_alloc() charptr {
 	mut *r := Run{}
 
 	if KMem.use_lock {

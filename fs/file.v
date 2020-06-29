@@ -11,16 +11,16 @@ import sys
  * File descriptors
  */
 
-pub struct devsw := [param.NDEV]Devsw{}
+pub struct Devsw := [sys.NDEV]Devsw{}
 
 pub struct FTable {
-	lock spinlock.Spinlock
-	file [param.NFILE]File{}
+	lock lock.Spinlock
+	file [sys.NFILE]File{}
 }
 
 pub fn file_init() void
 {
-	spinlock.init_lock(&FTable.lock, 'ftable')
+	lock.init_lock(&FTable.lock, 'ftable')
 }
 
 /* Allocate a file structure. */

@@ -13,7 +13,7 @@ import sys
  */
 
 /* Local APIC registers, divided by 4 for use as []u32 indicies */
-const (
+pub const (
 	ID = 0x002 / 4,					/* ID */
 	VER = 0x0030 / 4,				/* Version */
 	TPR = 0x0080 / 4, 				/* Task Priority */
@@ -106,7 +106,7 @@ pub fn lapic_init() void
 	lapicw(TPR, 0)
 }
 
-pub fn lapicid() int
+pub fn lapic_id() int
 {
 	if !lapic {
 		return 0
@@ -116,7 +116,7 @@ pub fn lapicid() int
 }
 
 /* Acknowledge interrupt */
-pub fn lapiceoi() void
+pub fn lapic_eoi() void
 {
 	if lapic {
 		lapicw(EOI, 0)

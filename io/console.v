@@ -117,7 +117,7 @@ pub fn cprintf(*fmt byte, ...) void
 	}
 }
 
-pub fn kpanic(*s byte) void
+pub fn cons_panic(*s byte) void
 {
 	mut i := 0
 	mut pcs := [10]u32{}
@@ -126,7 +126,7 @@ pub fn kpanic(*s byte) void
 	Console.locking = 0
 
 	/* Use lapic_cpu_num so that we can call kpanic() from my_cpu() */
-	println('lapicid ${lapicid()}: panic: $s')
+	println('lapicid ${lapicid()}: cons_panic: $s')
 	get_caller_pcs(&s, pcs)
 
 	for i in pcs {

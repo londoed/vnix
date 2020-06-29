@@ -55,11 +55,11 @@ pub struct Mpioapic {			/* I/O APIC table entry */
 
 /* Table entry types */
 pub const (
-	MPPROC = 0x00 				/* One per processor */
-	MPBUS = 0x01 				/* One per bus */
-	MPIOAPIC = 0x02 			/* One per I/O APIC */
-	MPIOINTR = 0x03				/* One per bus interrupt source */
-	MPLINTR = 0x04				/* One per system interrupt source */
+	MP_PROC = 0x00 				/* One per processor */
+	MP_BUS = 0x01 				/* One per bus */
+	MP_IOAPIC = 0x02 			/* One per I/O APIC */
+	MP_IOINTR = 0x03				/* One per bus interrupt source */
+	MP_LINTR = 0x04				/* One per system interrupt source */
 )
 
 global (

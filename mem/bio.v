@@ -31,29 +31,29 @@ The implementation uses two state flags internally:
 
 
 pub struct BCache {
-	lock spinlock.Spinlock
-	buf [param.NBUF]buf.Buf{}
+	lock lock.Spinlock
+	buf [sys.NBUF]mem.Buf{}
 
 	// Linked list of all buffers, through prev/next.
 	// head.next is most recently used
-	head buf.Buf
+	head mem.Buf
 }
 
 pub fn b_init() void
 {
-	mut *b := buf.Buf{}
+	mut *b := mem.Buf{}
 
-	spinlock.init_lock(&BCache.lock, 'bcache')
+	lock.init_lock(&BCache.lock, 'bcache')
 
 	// Create linked list of buffers.
 	BCache.head.prev = &BCache.head
 	BCache.head.next = &BCache.head
 
-	for b = BCache.buf; b < BCache.buf + param.NBUF; b++ {
+	for b = BCache.buf; b < BCache.buf + sys.NBUF; b++ {
 		b.next = BCache.head.next
 		b.prev = BCache.head
 
-		sleeplock.init_sleeplock(&b.lock, 'buffer')
+		lock.init_sleeplock(&b.lock, 'buffer')
 		BCache.head.next.prev = b
 		BCache.head.next = 0
 	}
@@ -108,7 +108,7 @@ pub fn b_read(dev, block_no u32) buf.Buf*
 	b = b_get(dev, block_no)
 
 	if b.flags & buf.B_VALID == 0 {
-		ide.iderw(b)
+		dev.ide_rw(b)
 	}
 
 	return b
@@ -118,11 +118,11 @@ pub fn b_read(dev, block_no u32) buf.Buf*
 pub fn b_write(*b buf.Buf) void
 {
 	if !holding_sleep(&b.lock) {
-		die('b_write')
+		kpanic('b_write')
 	}
 
 	b.flags |= buf.B_DIRTY
-	ide.iderw(b)
+	dev.ide_rw(b)
 }
 
 // Release a locked buffer.
@@ -130,11 +130,11 @@ pub fn b_write(*b buf.Buf) void
 pub fn b_relse(*b buf.Buf) void
 {
 	if !holding_sleep(&b.lock) {
-		die('b_relse')
+		kpanic('b_relse')
 	}
 
-	sleeplock.release_sleep(&b.lock)
-	spinlock.acquire(&BCache.lock)
+	lock.release_sleep(&b.lock)
+	lock.acquire(&BCache.lock)
 	b.ref_cnt--
 
 	if b.ref_cnt == 0 {
@@ -148,5 +148,5 @@ pub fn b_relse(*b buf.Buf) void
 		BCache.head.next = b
 	}
 
-	spinlock.release(&BCache.lock)
+	lock.release(&BCache.lock)
 }
