@@ -49,7 +49,7 @@ pub fn ide_init() void
 	mut i := 0
 
 	lock.init_lock(&ide_lock, 'ide')
-	ioapic_enable(IRQ_IDE, ncpu - 1)
+	ioapic_enable(IRQ_IDE, sys.NCPU - 1)
 	ide_wait(0)
 
 	// Check if disk 1 is present
@@ -79,8 +79,8 @@ pub fn ide_start(*b mem.Buf) void
 
 	mut sector_per_block := fs.B_SIZE / SECTOR_SIZE
 	mut sector := b.block_no * sector_per_block
-	mut read_cmd := IDE_CMD_READ if sector_per_block == 1 else IDE_CMD_RDMUL
-	mut write_cmd := IDE_CMD_WRITE if sector_per_block == 1 else IDE_CMD_WRMUL
+	mut read_cmd := if sector_per_block == 1 { IDE_CMD_READ } else { IDE_CMD_RDMUL }
+	mut write_cmd := if sector_per_block == 1 { IDE_CMD_WRITE } else { IDE_CMD_WRMUL }
 
 	if sector_per_block > 7 {
 		io.kpanic('ide_start')
@@ -119,14 +119,14 @@ pub fn ide_intr() void
 	ide_queue = b.q_next
 
 	// Read data if needed.
-	if !(b.flags & B_DIRTY) && ide_wait(1) >= 0 {
+	if !(b.flags & mem.B_DIRTY) && ide_wait(1) >= 0 {
 		asm.insl(0x1f0, b.data, fs.B_SIZE / 4)
 	}
 
 	// Wake up process waiting for this buf.
-	b.flags |= B_VALID
-	b.flags &= ~B_DIRTY
-	wake_up(b)
+	b.flags |= mem.B_VALID
+	b.flags &= ~mem.B_DIRTY
+	proc.wake_up(b)
 
 	// Start disk on next buf in queue.
 	if ide_queue != 0 {
@@ -150,7 +150,7 @@ pub fn ide_rw(*b mem.Buf) void
 		io.kpanic('iderw: buf not locked')
 	}
 
-	if (b.flags & (B_VALID | B_DIRTY)) == B_VALID {
+	if (b.flags & (mem.B_VALID | mem.B_DIRTY)) == mem.B_VALID {
 		io.kpanic('iderw: nothing to do')
 	}
 

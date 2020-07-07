@@ -1,14 +1,12 @@
 module dev
 
 import asm
-import fs
-import lock
 import mem
-import proc
 import sys
 
 /* See MultiProcessor Specification Version 1.[14] */
-pub struct Mp { 				/* floating pointer */
+struct Mp {
+pub mut:				/* floating pointer */
 	signature [4]byte{} 		/* "_MP_" */
 	*phys_addr any 				/* physical address of MP config table */
 	length byte 				/* 1 */
@@ -19,7 +17,8 @@ pub struct Mp { 				/* floating pointer */
 	reserved [3]byte{}
 }
 
-pub struct Mpconf { 				/* configuration table header */
+struct Mpconf { 				/* configuration table header */
+pub mut:
 	signature [4]byte{}			/* "PCMP" */
 	length u16					/* total table length */
 	version byte				/* [14] */
@@ -34,7 +33,8 @@ pub struct Mpconf { 				/* configuration table header */
 	reserved u16
 }
 
-pub struct Mpproc {					/* processor table entry */
+struct Mpproc {					/* processor table entry */
+pub mut:
 	ttype u16					/* entry type (0) */
 	apic_id u16					/* local APIC id */
 	version u16					/* local APIC version */
@@ -45,7 +45,8 @@ pub struct Mpproc {					/* processor table entry */
 	reserved [8]u16proc
 }
 
-pub struct Mpioapic {			/* I/O APIC table entry */
+struct Mpioapic {			/* I/O APIC table entry */
+pub mut:
 	ttype u16					/* entry type (2) */
 	apic_no u16					/* I/O APIC id */
 	version u16					/* I/O APIC version */
@@ -60,12 +61,6 @@ pub const (
 	MP_IOAPIC = 0x02 			/* One per I/O APIC */
 	MP_IOINTR = 0x03				/* One per bus interrupt source */
 	MP_LINTR = 0x04				/* One per system interrupt source */
-)
-
-global (
-	cpus [param.NCPU]CPU{},
-	n_cpu int,
-	ioapic_id u16,
 )
 
 pub fn sum(mut *addr u16, mut len int) u16
@@ -84,7 +79,7 @@ pub fn mp_searchi(mut a u32, mut len int) Mp*
 {
 	mut *a, *p, *addr := u16(0)
 
-	addr := p2v(a)
+	addr := mem.p2v(a)
 	e = addr + len
 
 	for p = addr; p < e; p += sizeof(Mp) {
@@ -110,7 +105,7 @@ pub fn mp_search() Mp*
 	mut p := u32(0)
 	mut *mp := Mp{}
 
-	bda = u16(*p2v(0x400))
+	bda = u16(*mem.p2v(0x400))
 
 	if (p = ((bda[0x0F] << 8) | bda[0x0E]) << 4) {
 		if (mp = mp_search1(p, 1024)) {
@@ -143,7 +138,7 @@ pub fn mp_config(mut **pmp Mp) Mpconf*
 		return 0
 	}
 
-	conf = Mpconf(p2v(u32(mp.phys_addr)))
+	conf = Mpconf(mem.p2v(u32(mp.phys_addr)))
 
 	if sys.memcmp(conf, "PCMP", 4) != 0 {
 		return 0
@@ -166,10 +161,13 @@ pub fn mp_init() void
 {
 	mut *p, *e := u16(0)
 	mut ismp := 0
+	mut n_cpu := 0
+	mut ioapic_id := u16(0)
 	mut *mp := Mp{}
 	mut *conf := Mpconf{}
 	mut *proc := Mpproc{}
 	mut *ioapoc := Mpioapic{}
+	mut cpus := [sys.NCPU]CPU{},
 
 	if (conf = mp_config(&mp)) == 0 {
 		kpanic('Expect it run on an SMP')
@@ -183,8 +181,8 @@ pub fn mp_init() void
 			MPPROC {
 				aproc = Mpproc(*p)
 
-				if n_cpu < param.NCPU {
-					cpus[n_cpu].apic_id = aproc.apic_id /* apic_id may differ from ncpu */
+				if n_cpu < sys.NCPU {
+					dev.cpus[n_cpu].apic_id = aproc.apic_id /* apic_id may differ from ncpu */
 					n_cpu++
 				}
 

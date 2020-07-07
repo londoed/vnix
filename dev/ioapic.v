@@ -1,12 +1,5 @@
 module dev
 
-import asm
-import fs
-import lock
-import mem
-import proc
-import sys
-
 /*
  * The I/O APIC manages hardware interrupts for an SMP system.
  * http://www.intel.com/design/chipsets/datashts/29056601.pdf
@@ -33,28 +26,28 @@ pub const (
 )
 
 /* IO APIC MMIO structure: write reg, then read or write data */
-pub struct Ioapic {
+struct Ioapic {
+pub mut:
 	reg u32
 	pad [3]u32{}
 	data u32
 }
 
-pub fn ioapic_read(reg int) u32
+pub fn (*i &Ioapic) ioapic_read(reg int) u32
 {
-	Ioapic.reg = reg
-	return Ioapic.data
+	i.reg = reg
+	return i.data
 }
 
-pub fn ioapic_write(reg int, data u32) void
+pub fn (*i &Ioapic) ioapic_write(reg int, data u32) void
 {
-	Ioapic.reg = reg
-	Ioapic.data = data
+	i.reg = reg
+	i.data = data
 }
 
-pub fn ioapic_init() void
+pub fn (*ic &Ioapic) ioapic_init() void
 {
 	mut i, id, max_intr := 0
-	mut ioapic := Ioapic{}
 
 	max_intr := (ioapic_read(REG_VER) >> 16) & 0xFF
 	id = ioapic_read(REG_ID) >> 24
@@ -73,7 +66,7 @@ pub fn ioapic_init() void
 	}
 }
 
-pub fn ioapic_enable(irq, cpu_num int) void
+pub fn (i* &Ioapic) ioapic_enable(irq, cpu_num int) void
 {
 	/*
 	 * Mark interrupt edge-triggered, active high,

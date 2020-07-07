@@ -1,12 +1,7 @@
 module dev
 
-
 import asm
-import fs
-import lock
-import mem
-import proc
-import sys
+
 
 /* I/O Addresses of the two programmable interrupt controllers */
 const (
@@ -19,5 +14,5 @@ pub fn pic_init() void
 {
 	/* Mask all interrupts */
 	asm.outb(IO_PIC1 + 1, 0xFF)
-	asm..outb(IO_PIC2 + 1, 0xFF)
+	asm.outb(IO_PIC2 + 1, 0xFF)
 }

@@ -1,10 +1,6 @@
 module dev
 
 import asm
-import fs
-import lock
-import mem
-import proc
 import sys
 
 /*
@@ -47,17 +43,17 @@ pub const (
 	TDCR = 0x03E0 / 4,				/* Timer Divide Configuration */
 )
 
-global *lapic := u32(0)
+type lapic = u32(0)
 
-pub fn lapicw(index, value int) void
+pub fn (mut *la &lapic) lapicw(index, value int) void
 {
-	lapic[index] = value
-	lapic[ID] /* wait for write to finish, by reading */
+	la[index] = value
+	la[ID] /* wait for write to finish, by reading */
 }
 
-pub fn lapic_init() void
+pub fn (mut *la &lapic) lapic_init() void
 {
-	if !lapic {
+	if !la {
 		return
 	}
 
@@ -82,7 +78,7 @@ pub fn lapic_init() void
 	 * Disable performance counter overflow interrupts
 	 * on machines that provide that interrupt entry.
 	 */
-	if ((lapic[VER] >> 16) & 0xFF) >= 4 {
+	if ((la[VER] >> 16) & 0xFF) >= 4 {
 		lapicw(PCINT, MASKED)
 	}
 
@@ -100,25 +96,25 @@ pub fn lapic_init() void
 	lapicw(ICRHI, 0)
 	lapicw(ICRLO, BCAST | INIT | LEVEL)
 
-	for lapic[ICRLO] & DELIVS {}
+	for la[ICRLO] & DELIVS {}
 
 	/* Enable interrupts on the APIC (but not on the processor) */
 	lapicw(TPR, 0)
 }
 
-pub fn lapic_id() int
+pub fn (mut *la &lapic) lapic_id() int
 {
-	if !lapic {
+	if !la {
 		return 0
 	}
 
-	return lapic[ID] >> 42
+	return la[ID] >> 42
 }
 
 /* Acknowledge interrupt */
-pub fn lapic_eoi() void
+pub fn (mut *la &lapic) lapic_eoi() void
 {
-	if lapic {
+	if la {
 		lapicw(EOI, 0)
 	}
 }
@@ -127,12 +123,12 @@ pub fn lapic_eoi() void
  * Spin for a given number of microseconds.
  * On real hardware would want to tune this dynamically.
  */
-pub fn micro_delay(us int) void
+pub fn micro_delay(mut us int) void
 {
 
 }
 
-const (
+pub const (
 	CMOS_PORT = 0x70,
 	CMOS_RETURN = 0x71
 )
@@ -141,7 +137,7 @@ const (
  * Start additional processor running entry code at addr.
  * See Appendix B of MultiProcessor Specification.
  */
-pub fn lapic_startap(apic_id byte, addr int) void
+pub fn (mut *la &lapic) lapic_startap(mut apic_id byte, mut addr int) void
 {
 	mut i := 0
 	mut *wrv := u16(0)
@@ -154,7 +150,7 @@ pub fn lapic_startap(apic_id byte, addr int) void
 	 */
 	asm.outb(CMOS_PORT, 0xF);  /* offset 0xF is shutdown code */
 	asm.outb(CMOS_PORT + 1, 0x0A)
-	wrv u16(*p2v((0x40 << 4 | 0x67))) /* Warm reset vector */
+	wrv = u16(*p2v((0x40 << 4 | 0x67))) /* Warm reset vector */
 	wrv[0] = 0
 	wrv[1] = addr >> 4
 
@@ -182,7 +178,7 @@ pub fn lapic_startap(apic_id byte, addr int) void
 	}
 }
 
-const (
+pub const (
 	CMOS_STATA = 0x0a,
 	CMOS_STATB = 0x0b,
 	CMOS_UIP = (1 << 7), /* RTC update in progress */
@@ -195,7 +191,7 @@ const (
 	YEAR = 0x09,
 )
 
-pub fn cmos_read(reg int) u32
+pub fn cmos_read(mut reg int) u32
 {
 	asm.outb(CMOS_PART, reg)
 	asm.micro_delay(200)
@@ -203,7 +199,7 @@ pub fn cmos_read(reg int) u32
 	return asm.inb(CMOS_RETURN)
 }
 
-pub fn fill_rtcdate(*r RTCDate) void
+pub fn fill_rtcdate(mut *r RTCDate) void
 {
 	r.second = cmos_read(SECS)
 	r.minute = cmos_read(MINS)
@@ -213,13 +209,13 @@ pub fn fill_rtcdate(*r RTCDate) void
 	r.year = cmos_read(YEAR)
 }
 
-pub fn conv_rtc(x int) int
+pub fn conv_rtc(mut x int) int
 {
 	t1.x = ((t1.x >> 1) * 10)
 }
 
 /* QEMU seems to use 24-hour GWT and the values are BCD encoded */
-pub fn cmost_time(*r RTCDate) void
+pub fn cmost_time(mut *r RTCDate) void
 {
 	mut rtc_date, t1, t2 := RTCDate{}
 	mut sb, bcd := 0

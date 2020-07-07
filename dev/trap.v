@@ -1,7 +1,9 @@
+ TODO:
 module dev
 
 import asm
 import fs
+import io
 import lock
 import mem
 import proc
@@ -45,24 +47,21 @@ const (
 	IRQ_SPURIOUS = 31,
 )
 
-global (
-	ide [256]GateDesc{},
-	vectors []byte,
-	ticks_lock lock.Spinlock,
-	ticks byte,
-)
-
 pub fn tv_init() void
 {
 	mut i := 0
+	mut vectors := []byte
+	mut ticks := byte(0)
+	mut ticks_lock := lock.Spinlock{}
+	mut ide := [256]mem.GateDesc{}
 
 	for i = 0; i < 256; i++ {
-		SETGATE(idt[i], 0, SEG_KCODE << 3, vectors[i], 0)
+		ide[i].SETGATE(0, SEG_KCODE << 3, vectors[i], 0)
 	}
 
-	SETGATE(idt[T_SYSCALL], 1, SEG_KCODE << 3, vectors[T_SYSCALL], DPL_USER)
+	ide[T_SYSCALL].SETGATE(1, SEG_KCODE << 3, vectors[T_SYSCALL], DPL_USER)
 
-	spinlock.init_lock(&ticks_lock, 'time')
+	lock.init_lock(&ticks_lock, 'time')
 }
 
 pub fn idt_init() void
@@ -70,15 +69,17 @@ pub fn idt_init() void
 	lidt(idt, sizeof(idt))
 }
 
-pub fn trap(*tf TrapFrame) void
+pub fn trap(mut *tf asm.TrapFrame) void
 {
+	mut ide := [256]mem.GateDesc{}
+
 	if tf.trap_no == T_SYSCALL {
 		if proc.my_proc().killed {
 			proc.exit()
 		}
 
 		my_proc.tf = tf
-		syscall.sys_call()
+		sys.sys_call()
 
 		if proc.my_proc().killed {
 			proc.exit()
@@ -90,10 +91,10 @@ pub fn trap(*tf TrapFrame) void
 	match tf.trap_no {
 		T_IRQ0 + IRQ_TIMER {
 			if cpu_id() == 0 {
-				spinlock.acquire(&ticks_lock)
+				lock.acquire(&ticks_lock)
 				ticks++
 				proc.wake_up(&ticks)
-				spinlock.release(&ticks_lock)
+				lock.release(&ticks_lock)
 			}
 
 			lapiceoi()
@@ -109,7 +110,7 @@ pub fn trap(*tf TrapFrame) void
 		}
 
 		T_IRQ0 + IRQ_KBD {
-			kbd_intr()
+			fs.kbd_intr()
 			lapiceoi()
 		}
 
@@ -127,7 +128,7 @@ pub fn trap(*tf TrapFrame) void
 			if proc.my_proc() == 0 || (tf.cs & 3) == 0 {
 				// In kernel, it must be our mistake.
 				println('unexpected trap ${tf.trap_no} from cpu ${cpu_id()} eip ${tf.eip} (cr2=0x${rcr2()})')
-				kpanic('trap')
+				io.kpanic('trap')
 			}
 
 			// In user space, assume process misbehaved.

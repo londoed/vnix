@@ -11,13 +11,10 @@ import sys
 /* Intel 8250 serial port (UART) */
 pub const COM1 = 0x3f8
 
-global (
-	mut uart := 0 /* is there a uart? */
-)
-
 pub fn uart_init() void
 {
 	mut *p := byte(0)
+	mut uart := 0
 
 	/* Turn off the FIFO */
 	asm.outb(COM1 + 2, 0)
@@ -51,9 +48,10 @@ pub fn uart_init() void
 	}
 }
 
-pub fn uart_putc(c int) void
+pub fn uart_putc(mut c int) void
 {
 	mut i := 0
+	mut uart := 0
 
 	if !uart {
 		return -1

@@ -170,6 +170,16 @@ pub fn kvm_alloc() void
 	lcr3(v2p(kpgdir)) // switch to the kernel page table
 }
 
+/*
+ * Switch h/w page table register to the kernel-only page table,
+ * for when no process is running.
+ */
+pub fn switch_kvm() void
+{
+	mut *kpgdir := pde_t(0)
+	lcr3(v2p(kpgdir)) /* switch to the kernel page table */
+}
+
 // Switch TSS and h/w page table to correspond to process p.
 pub fn (*p Proc) switch_uvm() void
 {
