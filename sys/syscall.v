@@ -107,7 +107,7 @@ pub fn arg_ptr(n int, *pp byte, size int) int
 	return 0
 }
 
-pub fn arg_str(n int, **pp) int
+pub fn arg_str(n int, **pp string) int
 {
 	mut addr := 0
 
@@ -121,27 +121,27 @@ pub fn arg_str(n int, **pp) int
 pub fn sys_call() void
 {
 	sys_calls := {
-		SYS_FORK: sysproc.sys_fork(),
-		SYS_EXIT: sysproc.sys_exit(),
-		SYS_WAIT: sysproc.sys_wait(),
-		SYS_PIPE: sysproc.sys_pipe(),
-		SYS_READ: sysproc.sys_read(),
-		SYS_KILL: sysproc.sys_kill(),
-		SYS_EXEC: sysproc.sys_exec(),
-		SYS_FSTAT: sysproc.sys_fstat(),
-		SYS_CHDIR: sysproc.sys_chdir(),
-		SYS_DUP: sysproc.sys_dup(),
-		SYS_GETPID: sysproc.sys_getpid(),
-		SYS_SBRK: sysproc.sys_sbrk(),
-		SYS_SLEEP: sysproc.sys_sleep(),
-		SYS_UPTIME: sysproc.sys_uptime(),
-		SYS_OPEN: sysproc.sys_open(),
-		SYS_WRITE: sysproc.sys_write(),
-		SYS_MKNOD: sysproc.sys_mknod(),
-		SYS_UNLINK: sysproc.sys_unlink(),
-		SYS_LINK: sysproc.sys_unlink(),
-		SYS_MKDIR: sysproc.sys_mkdir(),
-		SYS_CLOSE: sysproc.sys_close(),
+		SYS_FORK: sys.sys_fork(),
+		SYS_EXIT: sys.sys_exit(),
+		SYS_WAIT: sys.sys_wait(),
+		SYS_PIPE: sys.sys_pipe(),
+		SYS_READ: sys.sys_read(),
+		SYS_KILL: sys.sys_kill(),
+		SYS_EXEC: sys.sys_exec(),
+		SYS_FSTAT: sys.sys_fstat(),
+		SYS_CHDIR: sys.sys_chdir(),
+		SYS_DUP: sys.sys_dup(),
+		SYS_GETPID: sys.sys_getpid(),
+		SYS_SBRK: sys.sys_sbrk(),
+		SYS_SLEEP: sys.sys_sleep(),
+		SYS_UPTIME: sys.sys_uptime(),
+		SYS_OPEN: sys.sys_open(),
+		SYS_WRITE: sys.sys_write(),
+		SYS_MKNOD: sys.sys_mknod(),
+		SYS_UNLINK: sys.sys_unlink(),
+		SYS_LINK: sys.sys_unlink(),
+		SYS_MKDIR: sys.sys_mkdir(),
+		SYS_CLOSE: sys.sys_close(),
 	}
 
 	mut num := 0
